@@ -10,7 +10,7 @@ still win.
 diff --git a/drivers/watchdog/esp32p4_wdt.c b/drivers/watchdog/esp32p4_wdt.c
 --- a/drivers/watchdog/esp32p4_wdt.c
 +++ b/drivers/watchdog/esp32p4_wdt.c
-@@ -483,6 +483,9 @@
+@@ -484,6 +484,9 @@
  {
  	struct esp32p4_wdt *wdt = watchdog_get_drvdata(wdd);
  

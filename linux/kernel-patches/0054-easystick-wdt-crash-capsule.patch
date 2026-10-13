@@ -116,7 +116,7 @@ diff --git a/drivers/watchdog/esp32p4_wdt.c b/drivers/watchdog/esp32p4_wdt.c
  };
  
  /* EasyStick 0024 observe-only: feed telemetry (do not change timeout/policy). */
-@@ -75,21 +137,33 @@
+@@ -75,21 +137,34 @@
  	writel(0, wdt->base + TIMG_WDTWPROTECT);
  }
  
@@ -148,13 +148,14 @@ diff --git a/drivers/watchdog/esp32p4_wdt.c b/drivers/watchdog/esp32p4_wdt.c
 -	writel(timeout_ticks, wdt->base + TIMG_WDTCONFIG2);
 -	/* Stages 1-3 stay OFF: stage 0 alone resets the system. */
 +	writel(pretimeout_ticks, wdt->base + TIMG_WDTCONFIG2);
-+	writel(timeout_ticks, wdt->base + TIMG_WDTCONFIG3);
++	/* Stages count in sequence: stage 1 restarts from 0 after stage 0. */
++	writel(grace_ticks, wdt->base + TIMG_WDTCONFIG3);
 +	int_ena = readl(wdt->base + TIMG_INT_ENA_TIMERS);
 +	writel(int_ena | TIMG_WDT_INT, wdt->base + TIMG_INT_ENA_TIMERS);
  	writel(conf, wdt->base + TIMG_WDTCONFIG0);
  	writel(conf | TIMG_WDT_CONF_UPDATE_EN, wdt->base + TIMG_WDTCONFIG0);
  	writel(1, wdt->base + TIMG_WDTFEED);
-@@ -109,9 +183,12 @@
+@@ -109,9 +184,12 @@
  {
  	struct esp32p4_wdt *wdt = watchdog_get_drvdata(wdd);
  
@@ -167,7 +168,7 @@ diff --git a/drivers/watchdog/esp32p4_wdt.c b/drivers/watchdog/esp32p4_wdt.c
  	esp32p4_wdt_relock(wdt);
  
  	return 0;
-@@ -121,6 +198,9 @@
+@@ -121,6 +199,9 @@
  {
  	struct esp32p4_wdt *wdt = watchdog_get_drvdata(wdd);
  
@@ -177,7 +178,7 @@ diff --git a/drivers/watchdog/esp32p4_wdt.c b/drivers/watchdog/esp32p4_wdt.c
  	esp32p4_wdt_unlock(wdt);
  	writel(1, wdt->base + TIMG_WDTFEED);
  	esp32p4_wdt_relock(wdt);
-@@ -142,6 +222,165 @@
+@@ -142,6 +223,165 @@
  	return esp32p4_wdt_start(wdd);
  }
  
@@ -343,7 +344,7 @@ diff --git a/drivers/watchdog/esp32p4_wdt.c b/drivers/watchdog/esp32p4_wdt.c
  static int esp32p4_wdt_restart(struct watchdog_device *wdd,
  			       unsigned long action, void *data)
  {
-@@ -171,6 +410,7 @@
+@@ -171,6 +411,7 @@
  {
  	struct device *dev = &pdev->dev;
  	struct esp32p4_wdt *wdt;
@@ -351,7 +352,7 @@ diff --git a/drivers/watchdog/esp32p4_wdt.c b/drivers/watchdog/esp32p4_wdt.c
  	u32 val;
  
  	wdt = devm_kzalloc(dev, sizeof(*wdt), GFP_KERNEL);
-@@ -181,6 +421,14 @@
+@@ -181,6 +422,14 @@
  	if (IS_ERR(wdt->base))
  		return PTR_ERR(wdt->base);
  
@@ -366,7 +367,7 @@ diff --git a/drivers/watchdog/esp32p4_wdt.c b/drivers/watchdog/esp32p4_wdt.c
  	wdt->wdd.info = &esp32p4_wdt_info;
  	wdt->wdd.ops = &esp32p4_wdt_ops;
  	wdt->wdd.min_timeout = 1;
-@@ -189,6 +437,13 @@
+@@ -189,6 +438,13 @@
  	wdt->wdd.parent = dev;
  	watchdog_set_drvdata(&wdt->wdd, wdt);
  	watchdog_init_timeout(&wdt->wdd, 0, dev);
@@ -380,7 +381,7 @@ diff --git a/drivers/watchdog/esp32p4_wdt.c b/drivers/watchdog/esp32p4_wdt.c
  	watchdog_set_restart_priority(&wdt->wdd, 128);
  
  	/*
-@@ -213,7 +468,29 @@
+@@ -213,7 +469,29 @@
  	esp32p4_wdt_arm(wdt, wdt->wdd.timeout * ESP32P4_WDT_TICK_HZ);
  	set_bit(WDOG_HW_RUNNING, &wdt->wdd.status);
  
