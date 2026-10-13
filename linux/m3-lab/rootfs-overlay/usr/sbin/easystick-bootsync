@@ -66,16 +66,28 @@ reattach() {
 	log "USB storage reattached"
 }
 
+# sleep is not a NOFORK applet, so `sleep 1` is a vfork+exec every tick (#29).
+# read -t on a FIFO that nobody writes waits in the shell itself.
+TICK_FIFO=/run/.bootsync-tick
+tick() {
+	if [ -p "$TICK_FIFO" ]; then
+		read -r -t "$1" _ <> "$TICK_FIFO" 2>/dev/null || true
+	else
+		sleep "$1"
+	fi
+}
+
 mkdir -p "$MNT_POINT"
+[ -p "$TICK_FIFO" ] || mkfifo -m 600 "$TICK_FIFO" 2>/dev/null || true
 while [ ! -f "$BOOT_IMG" ] || [ ! -x "$LUN_CTL" ]; do
-	sleep 2
+	tick 2
 done
 
 LAST_STATE=""
 log "Daemon started; use the host's safe-eject action to apply configuration"
 
 while true; do
-	sleep 1
+	tick 1
 	lun_state
 	if [ "$LUN_STATE" != "$LAST_STATE" ]; then
 		log "ownership=$LUN_STATE"

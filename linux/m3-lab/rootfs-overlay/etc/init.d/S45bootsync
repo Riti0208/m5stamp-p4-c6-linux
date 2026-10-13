@@ -1,19 +1,14 @@
 #!/bin/sh
-# Start the EasyStick boot partition sync & runtime reload daemon
+# easystick-bootsync is supervised by init (::respawn: in /etc/inittab, #29),
+# so it comes back if it dies.  This script only stops/restarts it; init
+# starts a new instance after the old one exits.
 
 case "${1:-start}" in
 	start)
-		echo "Starting easystick-bootsync daemon..."
-		/usr/sbin/easystick-bootsync &
+		echo "easystick-bootsync is started by init (inittab respawn)"
 		;;
-	stop)
-		echo "Stopping easystick-bootsync daemon..."
+	stop|restart)
 		killall easystick-bootsync 2>/dev/null || true
-		;;
-	restart)
-		killall easystick-bootsync 2>/dev/null || true
-		sleep 1
-		/usr/sbin/easystick-bootsync &
 		;;
 	*)
 		echo "Usage: $0 {start|stop|restart}" >&2

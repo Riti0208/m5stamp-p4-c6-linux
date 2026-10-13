@@ -1,5 +1,7 @@
 ::sysinit:/etc/init.d/rcS
 # USB-C/COM10 is the interactive lab console; UART0 remains the recovery fixture.
 ttyGS1::askfirst:-/bin/sh
+# Supervised daemons (#29): init restarts them if they exit.
+::respawn:/usr/sbin/easystick-bootsync
 ::restart:/sbin/init
 ::ctrlaltdel:/sbin/reboot
