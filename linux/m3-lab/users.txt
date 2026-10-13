@@ -1,6 +1,6 @@
 # username uid group gid password home shell groups comment
 # Deliberate M5Stack first-boot account for the image.
-# The root filesystem is a read-only squashfs, so `passwd` cannot persist a
-# change at runtime (#30).  To change this password, replace the hash below
-# (generate with `mkpasswd -m sha-512`) and rebuild the image.
+# This hash is only the fallback.  At boot S05easystick-tmpfs replaces it
+# with password= from credentials.txt on the USB drive (generated per device
+# on first boot, #24/#30); `passwd` does not persist on the read-only rootfs.
 m5 1000 m5 1000 $1$easystic$5DMG1YSbpJRAnz9BN0dYK. /home/m5 /bin/sh - M5Stack initial user

@@ -3,16 +3,17 @@
 This profile is for the first assembled-board test only.  It is intentionally
 less secure than the production M3 profile:
 
-- the local account is `pi` with the Raspberry-Pi-style initial password
-  `raspberry`;
+- the local account is `m5`; its password is generated per device on first
+  boot and stored as `password=` in `credentials.txt` on the USB drive (#24);
 - Dropbear password authentication is enabled for that account;
 - host keys are generated in `/tmp` and are lost on reboot;
 - Wi-Fi credentials are supplied at build time through environment variables,
   never committed to the repository.
 
-Use it only on a private test network.  The password cannot be changed at
-runtime (read-only rootfs, `passwd` does not persist); change the hash in
-`users.txt` and rebuild (#30).  Move to
+Use it only on a private test network.  `passwd` does not persist (read-only
+rootfs); edit `password=` in `credentials.txt`, safe-eject the drive and
+reboot instead.  S05easystick-tmpfs applies it to `/etc/shadow` at every boot
+(#30).  Move to
 the key-only M3 profile after the console/config overlay path
 has been validated.  The lab image's `askfirst` shell is on `ttyGS1`, so the
 module USB-C/COM10 path is usable during bring-up; UART0 remains the recovery
