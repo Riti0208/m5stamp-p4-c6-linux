@@ -313,6 +313,9 @@ static const esp_partition_t *select_boot_partition(void)
 			} else {
 				ESP_LOGE(TAG, "boot update failed; retaining active slot=%" PRIu32,
 					 selected_slot);
+				/* Drop the request so a failed update is not retried against a
+				 * PSRAM image that is about to be overwritten by the active slot. */
+				clear_boot_update_request();
 				return slots[selected_slot];
 			}
 			clear_boot_update_request();
