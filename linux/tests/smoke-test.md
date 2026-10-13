@@ -82,9 +82,15 @@ while :; do date; grep MemAvailable /proc/meminfo; cat /proc/loadavg; read -t 60
 (`mkfifo /run/.soak` first; `read -t` on a FIFO avoids an exec per sample.)
 MemAvailable must not trend downwards.
 
-## 7. Record
+## 7. SDIO clock (images built with `EASYSTICK_SDIO_MAX_KHZ`, #21)
+
+Record `dmesg | grep ES_SDIO_CLOCK` (root console; it is below the console loglevel),
+time a 1 MB `scp` in both directions, and repeat steps 1, 4 and 6.  Only a
+rate that passes all of them should become the DTS default.
+
+## 8. Record
 
 Write `linux/tests/<version>-hardware-validation-<date>.md` with the image
 SHA-256s, the `check-boot-log.py` output of steps 1–2, and the results of
-3–6.  The release workflow refuses assets whose hashes are not in such a
+3–7.  The release workflow refuses assets whose hashes are not in such a
 record.

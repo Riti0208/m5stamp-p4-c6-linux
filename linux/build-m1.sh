@@ -19,6 +19,8 @@ The default M3-lab image keeps those patches but applies 0024 so esp_info() in
 esp_sdio.c stays at debug level and does not starve ARP/SSH on NOMMU.
 Set EASYSTICK_SDIO_DEFAULT_MHZ to one of 1, 2, 5, or 10 to build a distinct
 SDIO clock arm.  The value is compiled into esp32_sdio.ko and attested at boot.
+The DTS still caps the bus at 400 kHz; set EASYSTICK_SDIO_MAX_KHZ to 1000, 2000,
+5000, 10000, 20000 or 40000 to raise that cap in a test image (#21).
 Set EASYSTICK_WDT_TEST_TIMEOUT_S to 1..3600 for a bounded watchdog positive
 control; the value is appended to the staged Linux bootargs only.
 Set EASYSTICK_WDT_TEST_NO_FEED=1 together with the timeout to disable the
@@ -98,6 +100,17 @@ sdio_default_mhz="${EASYSTICK_SDIO_DEFAULT_MHZ:-5}"
 case "$sdio_default_mhz" in
 	1|2|5|10) ;;
 	*) echo "EASYSTICK_SDIO_DEFAULT_MHZ must be 1, 2, 5, or 10" >&2; exit 2 ;;
+esac
+# The DTS caps the SDIO bus at 400 kHz (max-frequency), below the driver's
+# requested rate (#21).  This raises the cap for a test image only; the
+# default keeps the validated DTB and identity.
+sdio_max_identity=""
+case "${EASYSTICK_SDIO_MAX_KHZ:-400}" in
+	400) ;;
+	1000|2000|5000|10000|20000|40000)
+		sdio_max_identity=" sdio-max-khz=${EASYSTICK_SDIO_MAX_KHZ}"
+		;;
+	*) echo "EASYSTICK_SDIO_MAX_KHZ must be 400, 1000, 2000, 5000, 10000, 20000 or 40000" >&2; exit 2 ;;
 esac
 wdt_test_timeout_s="${EASYSTICK_WDT_TEST_TIMEOUT_S:-0}"
 case "$wdt_test_timeout_s" in
@@ -893,6 +906,14 @@ if text.count(needle) != 1:
 path.write_text(text.replace(needle, replacement, 1), encoding="utf-8", newline="\n")
 PY
 fi
+if [[ -n "$sdio_max_identity" ]]; then
+	dts_file="${dts_stage}/espressif/easystick-stamp-p4.dts"
+	[[ $(grep -c 'max-frequency = <400000>;' "$dts_file") == 1 ]] || {
+		echo "SDIO_MAX_GATE_FAIL: expected exactly one 400 kHz max-frequency in the DTS" >&2
+		exit 1
+	}
+	sed -i "s/max-frequency = <400000>;/max-frequency = <${EASYSTICK_SDIO_MAX_KHZ}000>;/" "$dts_file"
+fi
 cp -- "${firmware_root}/linux/linux.config" "${kernel_config_fragment}"
 grep -Fqx -- "CONFIG_SMP=n" "${firmware_root}/linux/linux.config" || {
 	echo "UP kernel config gate failed: source linux.config must keep CONFIG_SMP=n" >&2
@@ -1003,7 +1024,7 @@ cmd53_bb_pa_id="${EASYSTICK_CMD53_BB_PA:-none}"
 cmd53_bb_0052_sha_id="${EASYSTICK_CMD53_BB_0052_SHA256:-none}"
 cmd53_bb_0053_sha_id="${EASYSTICK_CMD53_BB_0053_SHA256:-none}"
 cmd53_bb_0054_sha_id="${EASYSTICK_CMD53_BB_0054_SHA256:-none}"
-profile_identity="profile-contract=21 profile=${profile} network=${network_profile} ssh=${ssh_profile} lab=${lab_profile} sdio-default-mhz=${sdio_default_mhz} wdt-test-timeout-s=${wdt_test_timeout_s} wdt-test-no-feed=${wdt_test_no_feed} stacktrace-diagnostics=${stacktrace_diagnostics} stacktrace-module-debug-strip=${stacktrace_diagnostics} esp-hosted-cmd52-trace=${cmd52_trace} esp-hosted-cmd52-marker=${cmd52_marker} ssh-ledger=${EASYSTICK_SSH_LEDGER:-0} tcp22-ledger=${EASYSTICK_TCP22_LEDGER:-0} esp-hosted-tx-ledger=${EASYSTICK_ESPHOSTED_TX_LEDGER:-0} esp-hosted-diagnostics=${EASYSTICK_ESPHOSTED_DIAGNOSTICS:-0} dw-mmc-cmd53-err-prov=${EASYSTICK_DW_MMC_CMD53_ERR_PROV:-0} cmd53-retention-bb=${EASYSTICK_CMD53_RETENTION_BB:-0} cmd53-bb-allow-pio=${cmd53_bb_allow_pio} cmd53-bb-pa=${cmd53_bb_pa_id} cmd53-bb-0052-sha=${cmd53_bb_0052_sha_id} cmd53-bb-0053-sha=${cmd53_bb_0053_sha_id} cmd53-bb-0054-sha=${cmd53_bb_0054_sha_id} force-pio=${EASYSTICK_SDIO_FORCE_PIO:-1} idmac-inv=${EASYSTICK_IDMAC_DESC_INVALIDATE:-0} idmac-nc=${EASYSTICK_IDMAC_NONCOHERENT_RING:-0} cmd53-rx-desc=${EASYSTICK_CMD53_RX_DESC_BYTES:-0} buildroot-jlevel=${EASYSTICK_BUILDROOT_JLEVEL:-auto} c68=${c68_profile} top=${c68_top_profile} stress=${c68_stress_profile} l3=${EASYSTICK_C68_L3_SMOKE:-0} tsens-linux=${EASYSTICK_TSENS_LINUX:-0} tsens-oracle=${EASYSTICK_TSENS_ORACLE:-0}${lab_tools_identity}"
+profile_identity="profile-contract=21 profile=${profile} network=${network_profile} ssh=${ssh_profile} lab=${lab_profile} sdio-default-mhz=${sdio_default_mhz} wdt-test-timeout-s=${wdt_test_timeout_s} wdt-test-no-feed=${wdt_test_no_feed} stacktrace-diagnostics=${stacktrace_diagnostics} stacktrace-module-debug-strip=${stacktrace_diagnostics} esp-hosted-cmd52-trace=${cmd52_trace} esp-hosted-cmd52-marker=${cmd52_marker} ssh-ledger=${EASYSTICK_SSH_LEDGER:-0} tcp22-ledger=${EASYSTICK_TCP22_LEDGER:-0} esp-hosted-tx-ledger=${EASYSTICK_ESPHOSTED_TX_LEDGER:-0} esp-hosted-diagnostics=${EASYSTICK_ESPHOSTED_DIAGNOSTICS:-0} dw-mmc-cmd53-err-prov=${EASYSTICK_DW_MMC_CMD53_ERR_PROV:-0} cmd53-retention-bb=${EASYSTICK_CMD53_RETENTION_BB:-0} cmd53-bb-allow-pio=${cmd53_bb_allow_pio} cmd53-bb-pa=${cmd53_bb_pa_id} cmd53-bb-0052-sha=${cmd53_bb_0052_sha_id} cmd53-bb-0053-sha=${cmd53_bb_0053_sha_id} cmd53-bb-0054-sha=${cmd53_bb_0054_sha_id} force-pio=${EASYSTICK_SDIO_FORCE_PIO:-1} idmac-inv=${EASYSTICK_IDMAC_DESC_INVALIDATE:-0} idmac-nc=${EASYSTICK_IDMAC_NONCOHERENT_RING:-0} cmd53-rx-desc=${EASYSTICK_CMD53_RX_DESC_BYTES:-0} buildroot-jlevel=${EASYSTICK_BUILDROOT_JLEVEL:-auto} c68=${c68_profile} top=${c68_top_profile} stress=${c68_stress_profile} l3=${EASYSTICK_C68_L3_SMOKE:-0} tsens-linux=${EASYSTICK_TSENS_LINUX:-0} tsens-oracle=${EASYSTICK_TSENS_ORACLE:-0}${lab_tools_identity}${sdio_max_identity}"
 
 set_config_value() {
 	local config=$1 key=$2 value=$3

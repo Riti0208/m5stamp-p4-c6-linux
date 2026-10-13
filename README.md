@@ -20,7 +20,7 @@ Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SS
 
 - **SoC Target**: ESP32-P4 (Dual-Core RV32IMAC / ilp32, CPU clock 360 MHz as reported by the boot-shim, 32 MiB PSRAM, 16 MiB SPI Flash).
 - **SMP (experimental)**: The kernel is built with SMP (`Linux 6.18.35 #1 SMP riscv32 GNU/Linux`), but the shipped DTB boots with `maxcpus=1`, so only CPU0 is online (`/sys/devices/system/cpu/online` = `0`). Setting `maxcpus=2` currently hangs during userland start and ends in a watchdog reset loop (issue #5). `maxcpus` in `/boot/config.txt` is informational and is not read by anything.
-- **Wi-Fi Companion**: ESP32-C6 (M5Stack Stamp-AddOn C6) connected via high-speed 4-bit SDIO.
+- **Wi-Fi Companion**: ESP32-C6 (M5Stack Stamp-AddOn C6) connected via 4-bit SDIO (400 kHz cap for now, see [SDIO clock](#c6-firmware-security-features--regulatory-notes)).
 - **Out-of-the-Box SoftAP**:
   - Broadcasts a per-device SSID **`m5-XXXX`** with a WPA2-PSK passphrase generated on first boot (see [Per-device credentials](#per-device-credentials)).
   - Integrated `udhcpd` DHCP server assigning client IPs in `192.168.4.2` – `192.168.4.20` (Gateway: `192.168.4.1`).
@@ -49,6 +49,7 @@ Linux / macOS serial examples, how to open the console without resetting the boa
 ## C6 Firmware, Security Features & Regulatory Notes
 
 - **C6 firmware**: Linux expects the ESP32-C6 to run ESP-Hosted NG 1.0.6 (the driver logs `ESP-Hosted Version: NG-1.0.6.0.1`). The release images flash the P4 only; a C6 running another version may fail to attach over SDIO. Check the version in the boot log: a mismatch is logged as `Incompatible ESP Host-firmware release detected` with both versions, and no log line at all means the C6 is not running ESP-Hosted NG. See [Updating the C6](#updating-the-c6).
+- **SDIO clock**: the DTS caps the bus at 400 kHz (`max-frequency`), so the driver's 5 MHz request is logged as `ES_SDIO_CLOCK_APPLY requested_mhz=5 ios_clock_hz=400000`, and that rate limits Wi-Fi throughput. To try a faster bus, build a test image with `EASYSTICK_SDIO_MAX_KHZ=5000` (or 1000–40000) together with `EASYSTICK_SDIO_DEFAULT_MHZ`; higher rates have not been validated on hardware (#21).
 - **Secure Boot and flash encryption are disabled.** Physical access allows reading the flash (including Wi-Fi credentials in the boot FAT) and writing arbitrary firmware. See [SECURITY.md](SECURITY.md).
 - **Wi-Fi regulatory domain**: no `country=` is set by default, so the world regulatory domain applies. Set `country=` in `config.txt` for your region.
 - **Wi-Fi security**: WPA2-PSK only. Protected management frames are opt-in (`wifi_pmf=1`) and not yet tested with the C6 firmware; WPA3-SAE is not built.
