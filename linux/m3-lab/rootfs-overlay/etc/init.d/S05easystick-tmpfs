@@ -119,6 +119,21 @@ apply_password() {
 	fi
 }
 
+# authorized_keys on the USB drive -> /home/m5/.ssh (#25).  /home is a tmpfs
+# overlay, so this runs every boot and the drive stays the source of truth.
+install_keys() {
+	[ -f "$1" ] || return 0
+	d=/home/m5/.ssh
+	cr=$(printf '\r')
+	mkdir -p "$d"
+	sed -e "s/$cr\$//" "$1" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' > "$d/authorized_keys" || true
+	chown -R 1000:1000 "$d" 2>/dev/null || true
+	chmod 700 "$d"
+	chmod 600 "$d/authorized_keys"
+	n=$(grep -c '' "$d/authorized_keys" || true)
+	es_log "ES_SSH_KEYS: $n key(s) installed for m5 from authorized_keys"
+}
+
 start() {
 	es_log "ES_TMPFS BEGIN"
 	mkdir -p /tmp 2>/dev/null || true
@@ -245,6 +260,7 @@ EOF
 			fi
 		fi
 		apply_password /boot/credentials.txt || true
+		install_keys /boot/authorized_keys || true
 		if [ -f /boot/credentials.txt ]; then
 			cp -f /boot/credentials.txt /tmp/credentials.txt 2>/dev/null || true
 			chmod 600 /tmp/credentials.txt 2>/dev/null || true

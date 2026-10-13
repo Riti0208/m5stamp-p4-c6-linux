@@ -16,6 +16,20 @@ inetd_running() {
 	return 1
 }
 
+# ssh_password_auth=no in config.txt switches Dropbear to keys only (#25), but
+# only when S05 installed at least one key: a typo must not lock out SSH.
+password_auth_off() {
+	cr=$(printf '\r')
+	v=$(sed -e "s/$cr\$//" /tmp/config.txt 2>/dev/null |
+		sed -n 's/^[ 	]*ssh_password_auth[ 	]*=[ 	]*//p' | head -n1 | tr -d ' ')
+	[ "$v" = "no" ] || return 1
+	if [ ! -s /home/m5/.ssh/authorized_keys ]; then
+		printf '%s\n' "M3-lab: ssh_password_auth=no ignored: no authorized_keys installed"
+		return 1
+	fi
+	return 0
+}
+
 LOCK=/tmp/.es-ssh.lock
 
 start() {
@@ -71,9 +85,16 @@ start_locked() {
 	# ethsta0, and either may appear after this script runs.
 	if ! inetd_running; then
 		es_hk "ES_HOSTKEY INETD_START"
-		printf '%s\n' "M3-lab: starting password-enabled Dropbear on TCP/22"
+		INETD_CONF=/etc/inetd.conf
+		if password_auth_off; then
+			sed 's|/usr/sbin/dropbear dropbear |&-s |' /etc/inetd.conf > /run/inetd.conf
+			INETD_CONF=/run/inetd.conf
+			printf '%s\n' "M3-lab: starting key-only Dropbear on TCP/22 (ssh_password_auth=no)"
+		else
+			printf '%s\n' "M3-lab: starting password-enabled Dropbear on TCP/22"
+		fi
 		# Respawn inetd if it is ever killed (e.g. by the OOM killer).
-		( while :; do /usr/sbin/inetd -f -R 10 /etc/inetd.conf; sleep 2; done ) &
+		( while :; do /usr/sbin/inetd -f -R 10 "$INETD_CONF"; sleep 2; done ) &
 		echo $! > /tmp/.es-inetd-sup
 	else
 		es_hk "ES_HOSTKEY INETD_ALREADY"

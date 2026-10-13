@@ -72,6 +72,7 @@ Every board gets its own credentials on first boot; no SSID or password is share
 - `password=` is applied to user `m5` at every boot. To change it, edit `password=` (8-64 characters, no `:`) in `credentials.txt`, safe-eject the drive and reboot. `passwd` over SSH only lasts until the next boot.
 - `channel=` (1-13) in `config.txt` sets the SoftAP channel without editing `wpa_supplicant.conf`.
 - A custom `wpa_supplicant.conf` (one that is not the shipped `m5` / `m5stamp-p4-c6` default) is never overwritten; only `password=` is generated then.
+- **SSH keys**: put an OpenSSH `authorized_keys` file on the USB drive, safe-eject and reboot; it is installed as `/home/m5/.ssh/authorized_keys` at every boot (`ES_SSH_KEYS` in the serial log). With keys installed, `ssh_password_auth=no` in `config.txt` makes Dropbear accept keys only. Without any installed key that setting is ignored so a mistake cannot lock you out.
 
 ---
 
