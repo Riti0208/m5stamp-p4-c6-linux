@@ -43,6 +43,10 @@ Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SS
 
 ---
 
+## Serial Access, Troubleshooting & Recovery
+
+Linux / macOS serial examples, how to open the console without resetting the board, troubleshooting and flash backup / recovery are in [docs/troubleshooting.md](docs/troubleshooting.md).
+
 ## Default Credentials & Connection
 
 | Service | SSID / Host | Username | Password | Notes |
