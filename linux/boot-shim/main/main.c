@@ -389,7 +389,8 @@ static uint32_t kernel_image_size(const esp_partition_t *part)
 	memcpy(&magic, (const uint8_t *)mapped + 48, sizeof(magic));
 	memcpy(&image_size, (const uint8_t *)mapped + 16, sizeof(image_size));
 	esp_partition_munmap(handle);
-	if (magic != RISCV_IMAGE_MAGIC || image_size == 0 || image_size > part->size)
+	if (magic != RISCV_IMAGE_MAGIC || image_size == 0 || image_size > part->size ||
+	    image_size > (uint64_t)(DTB_LOAD_PA - KERNEL_LOAD_PA))
 		return 0;
 	return (uint32_t)image_size;
 }
@@ -456,7 +457,7 @@ extern void c68_secondary_entry(void);
 
 static void prepare_cpu1_c68_clean_release(void)
 {
-	uint32_t deadline;
+	uint32_t start_cycles;
 
 	c68_release = 0;
 	c68_stage = 0;
@@ -467,9 +468,10 @@ static void prepare_cpu1_c68_clean_release(void)
 	cpu_utility_ll_enable_clock_and_reset_app_cpu();
 	ets_set_appcpu_boot_addr((uint32_t)(uintptr_t)c68_secondary_entry);
 
-	deadline = esp_cpu_get_cycle_count() + C68_CPU1_WAIT_CYCLES;
+	start_cycles = esp_cpu_get_cycle_count();
 	while (__atomic_load_n(&c68_stage, __ATOMIC_RELAXED) != C68_STAGE_WAITING) {
-		if (esp_cpu_get_cycle_count() > deadline)
+		/* Unsigned subtraction is wrap-safe; a "> deadline" compare is not. */
+		if ((esp_cpu_get_cycle_count() - start_cycles) > C68_CPU1_WAIT_CYCLES)
 			fatal_restart("C68 CPU1 never reached WAITING");
 	}
 	ets_printf("easystick-boot: C68 WAIT stage=1\n");
