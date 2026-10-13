@@ -1928,6 +1928,8 @@ if $lab_profile; then
 	# m3-lab USB configuration workflow.  Other profiles may read the boot
 	# image, but cannot stage a durable replacement.
 	set_config_value "${br_output}/.config" BR2_PACKAGE_EASYSTICK_BOOT_COMMIT y
+	# Signed regulatory.db for country= in config.txt (#32).
+	set_config_value "${br_output}/.config" BR2_PACKAGE_WIRELESS_REGDB y
 else
 	set_config_value "${br_output}/.config" BR2_PACKAGE_LIBPCAP "# BR2_PACKAGE_LIBPCAP is not set"
 	set_config_value "${br_output}/.config" BR2_PACKAGE_TCPDUMP "# BR2_PACKAGE_TCPDUMP is not set"
@@ -2076,7 +2078,8 @@ if $ssh_profile; then
 			"BR2_PACKAGE_DROPBEAR_CLIENT=y" \
 			"BR2_PACKAGE_LIBPCAP=y" \
 			"BR2_PACKAGE_TCPDUMP=y" \
-			"BR2_PACKAGE_EASYSTICK_BOOT_COMMIT=y"; do
+			"BR2_PACKAGE_EASYSTICK_BOOT_COMMIT=y" \
+			"BR2_PACKAGE_WIRELESS_REGDB=y"; do
 			grep -Fqx -- "${expected}" "${br_output}/.config" || {
 				echo "m3-lab config check failed: ${expected}" >&2
 				exit 1

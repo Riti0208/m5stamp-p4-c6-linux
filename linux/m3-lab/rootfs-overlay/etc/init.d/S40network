@@ -119,6 +119,23 @@ apply_channel() {
 	echo "M3-lab: SoftAP channel $ch ($freq MHz)"
 }
 
+# country=XX in config.txt sets the regulatory domain (#32).  Without it the
+# board stays on the world domain, which is the safe default.
+apply_country() {
+	[ -f "$CFG" ] || return 0
+	cc=$(conf_get country "$CFG" | tr -d ' ' | tr a-z A-Z)
+	[ -n "$cc" ] || return 0
+	case "$cc" in
+		[A-Z][A-Z]) ;;
+		*) echo "M3-lab: CONFIG ERROR: country=$cc is not a two-letter code; ignored"; return 0 ;;
+	esac
+	if iw reg set "$cc" 2>/dev/null; then
+		echo "M3-lab: regulatory domain $cc"
+	else
+		echo "M3-lab: could not set regulatory domain $cc"
+	fi
+}
+
 # wifi_ssid= / wifi_psk= in config.txt generate the Wi-Fi config so users do not
 # have to write wpa_supplicant.conf (#25).  wifi_mode=ap makes it a SoftAP,
 # otherwise a station.  Invalid values are reported and ignored.
@@ -285,6 +302,7 @@ start() {
 	while [ "$i" -lt 30 ]; do
 		if ifconfig wlan0 >/dev/null 2>&1; then
 			echo "M3-lab: wlan0 appeared"
+			apply_country || true
 
 			if [ "$is_ap" -eq 1 ]; then
 				echo "M3-lab: starting SoftAP mode from $CONF"
