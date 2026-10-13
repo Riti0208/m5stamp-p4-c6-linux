@@ -729,6 +729,8 @@ if $network_profile; then
 		patches+=(0053-easystick-mmc-cmd53-post-bb.patch)
 		if [[ "${EASYSTICK_WDT_CRASH_CAPSULE:-1}" == "1" ]]; then
 			patches+=(0054-easystick-wdt-crash-capsule.patch)
+			# A requested reboot must not record a WDT capsule (#19).
+			patches+=(0064-easystick-wdt-restart-no-capsule.patch)
 		else
 			echo "CMD53_BB_WARN: skipping 0054 crash capsule (EASYSTICK_WDT_CRASH_CAPSULE=0)" >&2
 		fi
@@ -783,6 +785,7 @@ for patch_name in "${patches[@]}"; do
 	      "$patch_name" == 0057-easystick-wdt-beat-breadcrumb.patch ||
 	      "$patch_name" == 0058-easystick-wdt-beat-nocapsule.patch ||
 	      "$patch_name" == 0059-easystick-wdt-inject.patch ||
+	      "$patch_name" == 0064-easystick-wdt-restart-no-capsule.patch ||
 	      "$patch_name" == 0056-easystick-wdt-stacktrace.patch ||
 	      "$patch_name" == 0055-easystick-sdio-clock-attest.patch ||
 	      "$patch_name" == 0060-easystick-dw-mmc-tx-software-dto.patch ||
