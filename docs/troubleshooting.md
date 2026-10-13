@@ -73,8 +73,9 @@ Configuration edits are applied only after the host's safe-eject action.
 **Need more kernel output.** Add `debug=1` to `config.txt`, safe-eject and
 reboot: S40network then leaves all kernel messages on the console instead of
 lowering it to warnings. Expect slower Wi-Fi/SSH while it is on, and remove it
-afterwards. `logread` shows the syslog ring buffer and `easystick-info` a status
-summary.
+afterwards. As root, `cat /run/messages.0 /run/messages`
+shows syslog (Dropbear logins, DHCP), capped at 64 KB, and `easystick-info` a
+status summary.
 
 **Settings broke Wi-Fi or SSH.** Put an empty `factory-reset` file on the USB
 drive and reboot to restore the defaults (see the README).

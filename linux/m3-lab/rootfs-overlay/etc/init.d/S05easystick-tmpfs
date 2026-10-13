@@ -168,9 +168,11 @@ start() {
 		[ -n "$bd" ] && date -s "$bd" >/dev/null 2>&1 || true
 	fi
 
-	# Ring-buffer syslog (read with logread) when the applets are built in.
+	# Syslog to /run/messages, root-only, rotated at 32 KB with one old copy
+	# (#26).  The shared-memory ring (-C, logread) needs SysV IPC, which the
+	# kernel leaves out.
 	if command -v syslogd >/dev/null 2>&1; then
-		syslogd -C16 2>/dev/null || true
+		( umask 077; syslogd -O /run/messages -s 32 -b 1 ) 2>/dev/null || true
 	fi
 	echo 1 > /proc/sys/vm/oom_kill_allocating_task 2>/dev/null || true
 

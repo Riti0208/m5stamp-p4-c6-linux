@@ -143,3 +143,6 @@ CONFIG_FEATURE_PREFER_APPLETS=y
 
 # #24: S05 hashes the per-device m5 password from credentials.txt at boot.
 CONFIG_CRYPTPW=y
+
+# #26: syslogd -s/-b in S05 (size-capped /run/messages).
+CONFIG_FEATURE_ROTATE_LOGFILE=y
