@@ -43,12 +43,9 @@ CONFIG_CMDLINE="earlycon=esp32p4usbjtag,mmio32,0x500d2000 console=ttyGS1,115200n
 # CONFIG_CMDLINE_FORCE is not set
 CONFIG_CMDLINE_FALLBACK=y
 
-# ESP-Hosted-NG includes the HCI cleanup/receive path even when the target
-# acceptance is Wi-Fi-only.  Keep the Bluetooth core built in so the SDIO
-# module has its bt_* symbols; do not select a separate Bluetooth transport.
-CONFIG_BT=y
-# CONFIG_BT_HCIBTSDIO is not set
-# CONFIG_BT_HCIUART is not set
+# No Bluetooth core (#29): esp-hosted-ng 0007 never creates an HCI device and
+# 0035 builds the module without esp_bt.o, which saves ~370 KB of kernel RAM.
+# CONFIG_BT is not set
 
 # M2 is IPv4 Wi-Fi bring-up only.  Keep the reference kernel's broad defaults
 # out of the flat Image so it remains inside the measured candidate map.  These
@@ -61,3 +58,5 @@ CONFIG_BT=y
 # CONFIG_NET_RX_BUSY_POLL is not set
 # CONFIG_KALLSYMS is not set
 # CONFIG_SLUB_DEBUG is not set
+# No userland program uses io_uring (#29).
+# CONFIG_IO_URING is not set
