@@ -75,6 +75,13 @@ Production `m3` disables `dbclient`. A DUT→DUT loopback SSH runs client crypto
 server crypto, inetd, and a shell together on a ~20 MB NOMMU image — that is
 harsher than the product path and is **not** an M2.5 failure by itself.
 
+`EASYSTICK_LAB_TOOLS=0` builds the same m3-lab image without the bring-up
+tools: no `tcpdump`/libpcap, MicroPython (`python`, `python3`), `dbclient`,
+`dropbearconvert` or `nc` (#32).  The release workflow still builds the default
+(`1`), because its hashes are checked against hardware validation records; a
+release switches over only after a `EASYSTICK_LAB_TOOLS=0` image has been
+validated on hardware.
+
 Prefer:
 
 ```text

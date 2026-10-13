@@ -25,6 +25,9 @@ Set EASYSTICK_WDT_TEST_NO_FEED=1 together with the timeout to disable the
 watchdog feed in that test image; it is rejected for non-test builds.
 Set EASYSTICK_WDT_INJECT=0 to skip 0059. Default (BB builds) adds
 `esp32p4_wdt.inject=1` (IRQ-on spin) and `=2` (local_irq_disable then spin).
+Set EASYSTICK_LAB_TOOLS=0 with --profile m3-lab to leave out the bring-up
+tools (tcpdump, MicroPython, dbclient, dropbearconvert, nc).  The default (1)
+keeps the image that the hardware validation records describe.
 Set EASYSTICK_BUILDROOT_JLEVEL=1 to serialize nested Buildroot package makes.
 This is useful for BusyBox versions whose generated applet tables are not safe
 when install-noclobber is invoked in parallel.
@@ -75,6 +78,18 @@ case "$profile" in
 	m3) network_profile=true; ssh_profile=true ;;
 	m3-lab) network_profile=true; ssh_profile=true; lab_profile=true ;;
 	*) echo "unsupported profile: $profile" >&2; exit 2 ;;
+esac
+# Bring-up tools in m3-lab (#32).  Only lab-tools=0 enters the profile
+# identity, so default builds keep their stamp and are not cleaned.
+lab_tools=false
+lab_tools_identity=""
+case "${EASYSTICK_LAB_TOOLS:-1}" in
+	1) if $lab_profile; then lab_tools=true; fi ;;
+	0)
+		$lab_profile || { echo "EASYSTICK_LAB_TOOLS=0 requires --profile m3-lab" >&2; exit 2; }
+		lab_tools_identity=" lab-tools=0"
+		;;
+	*) echo "EASYSTICK_LAB_TOOLS must be 0 or 1" >&2; exit 2 ;;
 esac
 sdio_default_mhz="${EASYSTICK_SDIO_DEFAULT_MHZ:-5}"
 case "$sdio_default_mhz" in
@@ -979,7 +994,7 @@ cmd53_bb_pa_id="${EASYSTICK_CMD53_BB_PA:-none}"
 cmd53_bb_0052_sha_id="${EASYSTICK_CMD53_BB_0052_SHA256:-none}"
 cmd53_bb_0053_sha_id="${EASYSTICK_CMD53_BB_0053_SHA256:-none}"
 cmd53_bb_0054_sha_id="${EASYSTICK_CMD53_BB_0054_SHA256:-none}"
-profile_identity="profile-contract=21 profile=${profile} network=${network_profile} ssh=${ssh_profile} lab=${lab_profile} sdio-default-mhz=${sdio_default_mhz} wdt-test-timeout-s=${wdt_test_timeout_s} wdt-test-no-feed=${wdt_test_no_feed} stacktrace-diagnostics=${stacktrace_diagnostics} stacktrace-module-debug-strip=${stacktrace_diagnostics} esp-hosted-cmd52-trace=${cmd52_trace} esp-hosted-cmd52-marker=${cmd52_marker} ssh-ledger=${EASYSTICK_SSH_LEDGER:-0} tcp22-ledger=${EASYSTICK_TCP22_LEDGER:-0} esp-hosted-tx-ledger=${EASYSTICK_ESPHOSTED_TX_LEDGER:-0} esp-hosted-diagnostics=${EASYSTICK_ESPHOSTED_DIAGNOSTICS:-0} dw-mmc-cmd53-err-prov=${EASYSTICK_DW_MMC_CMD53_ERR_PROV:-0} cmd53-retention-bb=${EASYSTICK_CMD53_RETENTION_BB:-0} cmd53-bb-allow-pio=${cmd53_bb_allow_pio} cmd53-bb-pa=${cmd53_bb_pa_id} cmd53-bb-0052-sha=${cmd53_bb_0052_sha_id} cmd53-bb-0053-sha=${cmd53_bb_0053_sha_id} cmd53-bb-0054-sha=${cmd53_bb_0054_sha_id} force-pio=${EASYSTICK_SDIO_FORCE_PIO:-1} idmac-inv=${EASYSTICK_IDMAC_DESC_INVALIDATE:-0} idmac-nc=${EASYSTICK_IDMAC_NONCOHERENT_RING:-0} cmd53-rx-desc=${EASYSTICK_CMD53_RX_DESC_BYTES:-0} buildroot-jlevel=${EASYSTICK_BUILDROOT_JLEVEL:-auto} c68=${c68_profile} top=${c68_top_profile} stress=${c68_stress_profile} l3=${EASYSTICK_C68_L3_SMOKE:-0} tsens-linux=${EASYSTICK_TSENS_LINUX:-0} tsens-oracle=${EASYSTICK_TSENS_ORACLE:-0}"
+profile_identity="profile-contract=21 profile=${profile} network=${network_profile} ssh=${ssh_profile} lab=${lab_profile} sdio-default-mhz=${sdio_default_mhz} wdt-test-timeout-s=${wdt_test_timeout_s} wdt-test-no-feed=${wdt_test_no_feed} stacktrace-diagnostics=${stacktrace_diagnostics} stacktrace-module-debug-strip=${stacktrace_diagnostics} esp-hosted-cmd52-trace=${cmd52_trace} esp-hosted-cmd52-marker=${cmd52_marker} ssh-ledger=${EASYSTICK_SSH_LEDGER:-0} tcp22-ledger=${EASYSTICK_TCP22_LEDGER:-0} esp-hosted-tx-ledger=${EASYSTICK_ESPHOSTED_TX_LEDGER:-0} esp-hosted-diagnostics=${EASYSTICK_ESPHOSTED_DIAGNOSTICS:-0} dw-mmc-cmd53-err-prov=${EASYSTICK_DW_MMC_CMD53_ERR_PROV:-0} cmd53-retention-bb=${EASYSTICK_CMD53_RETENTION_BB:-0} cmd53-bb-allow-pio=${cmd53_bb_allow_pio} cmd53-bb-pa=${cmd53_bb_pa_id} cmd53-bb-0052-sha=${cmd53_bb_0052_sha_id} cmd53-bb-0053-sha=${cmd53_bb_0053_sha_id} cmd53-bb-0054-sha=${cmd53_bb_0054_sha_id} force-pio=${EASYSTICK_SDIO_FORCE_PIO:-1} idmac-inv=${EASYSTICK_IDMAC_DESC_INVALIDATE:-0} idmac-nc=${EASYSTICK_IDMAC_NONCOHERENT_RING:-0} cmd53-rx-desc=${EASYSTICK_CMD53_RX_DESC_BYTES:-0} buildroot-jlevel=${EASYSTICK_BUILDROOT_JLEVEL:-auto} c68=${c68_profile} top=${c68_top_profile} stress=${c68_stress_profile} l3=${EASYSTICK_C68_L3_SMOKE:-0} tsens-linux=${EASYSTICK_TSENS_LINUX:-0} tsens-oracle=${EASYSTICK_TSENS_ORACLE:-0}${lab_tools_identity}"
 
 set_config_value() {
 	local config=$1 key=$2 value=$3
@@ -1901,10 +1916,10 @@ if $ssh_profile; then
 	set_config_value "${br_output}/.config" BR2_ROOTFS_POST_BUILD_SCRIPT "\"${post_build_scripts}\""
 	set_config_value "${br_output}/.config" BR2_ROOTFS_USERS_TABLES "\"${users_table}\""
 	set_config_value "${br_output}/.config" BR2_PACKAGE_DROPBEAR y
-	if $lab_profile; then
+	if $lab_tools; then
 		# Lab needs dbclient for loopback SSH proof and tcpdump for
-		# directional ARP/ICMP/TCP/22 evidence.  Production m3 stays
-		# client-less.
+		# directional ARP/ICMP/TCP/22 evidence.  Production m3 and
+		# EASYSTICK_LAB_TOOLS=0 stay client-less.
 		set_config_value "${br_output}/.config" BR2_PACKAGE_DROPBEAR_CLIENT y
 		set_config_value "${br_output}/.config" BR2_PACKAGE_LIBPCAP y
 		set_config_value "${br_output}/.config" BR2_PACKAGE_TCPDUMP y
@@ -1920,10 +1935,16 @@ else
 	set_config_value "${br_output}/.config" BR2_PACKAGE_DROPBEAR_DISABLE_REVERSEDNS "# BR2_PACKAGE_DROPBEAR_DISABLE_REVERSEDNS is not set"
 	set_config_value "${br_output}/.config" BR2_PACKAGE_DROPBEAR_LOCALOPTIONS_FILE "# BR2_PACKAGE_DROPBEAR_LOCALOPTIONS_FILE is not set"
 fi
-if $lab_profile; then
+if $lab_tools; then
 	set_config_value "${br_output}/.config" BR2_PACKAGE_LIBPCAP y
 	set_config_value "${br_output}/.config" BR2_PACKAGE_TCPDUMP y
 	set_config_value "${br_output}/.config" BR2_PACKAGE_MICROPYTHON_NOMMU y
+else
+	set_config_value "${br_output}/.config" BR2_PACKAGE_LIBPCAP "# BR2_PACKAGE_LIBPCAP is not set"
+	set_config_value "${br_output}/.config" BR2_PACKAGE_TCPDUMP "# BR2_PACKAGE_TCPDUMP is not set"
+	set_config_value "${br_output}/.config" BR2_PACKAGE_MICROPYTHON_NOMMU "# BR2_PACKAGE_MICROPYTHON_NOMMU is not set"
+fi
+if $lab_profile; then
 	# The PSRAM-to-flash A/B commit request is deliberately restricted to the
 	# m3-lab USB configuration workflow.  Other profiles may read the boot
 	# image, but cannot stage a durable replacement.
@@ -1933,9 +1954,6 @@ if $lab_profile; then
 	# <hostname>.local (#25); mdnsd/avahi need fork().
 	set_config_value "${br_output}/.config" BR2_PACKAGE_EASYSTICK_MDNS y
 else
-	set_config_value "${br_output}/.config" BR2_PACKAGE_LIBPCAP "# BR2_PACKAGE_LIBPCAP is not set"
-	set_config_value "${br_output}/.config" BR2_PACKAGE_TCPDUMP "# BR2_PACKAGE_TCPDUMP is not set"
-	set_config_value "${br_output}/.config" BR2_PACKAGE_MICROPYTHON_NOMMU "# BR2_PACKAGE_MICROPYTHON_NOMMU is not set"
 	set_config_value "${br_output}/.config" BR2_PACKAGE_EASYSTICK_BOOT_COMMIT "# BR2_PACKAGE_EASYSTICK_BOOT_COMMIT is not set"
 fi
 set_config_value "${br_output}/.config" BR2_ROOTFS_OVERLAY "\"${rootfs_overlay}\""
@@ -2077,12 +2095,24 @@ if $ssh_profile; then
 	}
 	if $lab_profile; then
 		for expected in \
-			"BR2_PACKAGE_DROPBEAR_CLIENT=y" \
-			"BR2_PACKAGE_LIBPCAP=y" \
-			"BR2_PACKAGE_TCPDUMP=y" \
 			"BR2_PACKAGE_EASYSTICK_BOOT_COMMIT=y" \
 			"BR2_PACKAGE_WIRELESS_REGDB=y" \
 			"BR2_PACKAGE_EASYSTICK_MDNS=y"; do
+			grep -Fqx -- "${expected}" "${br_output}/.config" || {
+				echo "m3-lab config check failed: ${expected}" >&2
+				exit 1
+			}
+		done
+		[[ -x "${br_output}/target/usr/sbin/easystick-boot-commit" ]] || {
+			echo "m3-lab check failed: boot commit helper missing" >&2
+			exit 1
+		}
+	fi
+	if $lab_tools; then
+		for expected in \
+			"BR2_PACKAGE_DROPBEAR_CLIENT=y" \
+			"BR2_PACKAGE_LIBPCAP=y" \
+			"BR2_PACKAGE_TCPDUMP=y"; do
 			grep -Fqx -- "${expected}" "${br_output}/.config" || {
 				echo "m3-lab config check failed: ${expected}" >&2
 				exit 1
@@ -2098,15 +2128,21 @@ if $ssh_profile; then
 			echo "m3-lab check failed: tcpdump missing" >&2
 			exit 1
 		}
-		[[ -x "${br_output}/target/usr/sbin/easystick-boot-commit" ]] || {
-			echo "m3-lab check failed: boot commit helper missing" >&2
-			exit 1
-		}
 	else
 		grep -Fqx -- "# BR2_PACKAGE_DROPBEAR_CLIENT is not set" "${br_output}/.config" || {
 			echo "SSH profile config check failed: Dropbear client must stay disabled" >&2
 			exit 1
 		}
+		if $lab_profile; then
+			for stale in usr/bin/dbclient usr/bin/tcpdump usr/sbin/tcpdump \
+				usr/bin/micropython usr/bin/python usr/bin/python3 \
+				usr/bin/dropbearconvert usr/bin/nc; do
+				[[ ! -e "${br_output}/target/${stale}" && ! -L "${br_output}/target/${stale}" ]] || {
+					echo "m3-lab check failed: EASYSTICK_LAB_TOOLS=0 image still has /${stale}" >&2
+					exit 1
+				}
+			done
+		fi
 	fi
 	[[ -x "${br_output}/target/usr/sbin/inetd" ]] || {
 		echo "SSH profile check failed: BusyBox inetd missing" >&2

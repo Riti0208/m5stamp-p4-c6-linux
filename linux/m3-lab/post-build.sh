@@ -72,6 +72,13 @@ for applet in \
 	done
 done
 
+# EASYSTICK_LAB_TOOLS=0 (#32) builds without dbclient; drop the other
+# bring-up entry points with it.
+if [ -n "${BR2_CONFIG:-}" ] &&
+   grep -qx '# BR2_PACKAGE_DROPBEAR_CLIENT is not set' "${BR2_CONFIG}"; then
+	rm -f "${TARGET_DIR}/usr/bin/dropbearconvert" "${TARGET_DIR}/usr/bin/nc"
+fi
+
 # Lock root: an empty root password would give passwordless root as soon as a
 # getty/login is used.  SSH already rejects root (-w -g).
 if [ -f "${TARGET_DIR}/etc/shadow" ]; then
