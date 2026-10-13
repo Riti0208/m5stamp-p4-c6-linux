@@ -7,6 +7,7 @@ import argparse
 import gzip
 import hashlib
 import re
+import tarfile
 import stat
 import subprocess
 import sys
@@ -22,6 +23,13 @@ ARTIFACTS = {
     "Image": (0x090000, 0x780000, "buildroot/images/Image"),
     "rootfs.squashfs": (0x810000, 0x700000, "buildroot/images/rootfs.squashfs"),
     "easystick-stamp-p4.dtb": (0xF10000, 0x010000, "buildroot/images/easystick-stamp-p4.dtb"),
+}
+# Debug material (#22): needed to resolve crash-capsule epc/ra of the exact image.
+DEBUG_FILES = {
+    "System.map": "buildroot/build/linux-custom/System.map",
+    "vmlinux": "buildroot/build/linux-custom/vmlinux",
+    "kernel.config": "buildroot/build/linux-custom/.config",
+    "boot-shim.elf": "{shim}/build/easystick_stamp_p4_boot_shim.elf",
 }
 BOOT_OFFSET = 0xF40000
 BOOT_BYTES = 0x40000
@@ -114,11 +122,25 @@ def main() -> int:
         zip_member(archive, "flash-layout.json", layout_data)
         zip_member(archive, "SHA256SUMS.txt", member_hashes)
 
+    debug_path = args.output / f"{prefix}-debug.tar.xz"
+    with tarfile.open(debug_path, "w:xz") as bundle:
+        for name, relative in DEBUG_FILES.items():
+            source = args.build_output / relative.format(shim=args.boot_shim_directory)
+            if not source.is_file():
+                raise SystemExit(f"missing debug artifact {source}")
+            info = bundle.gettarinfo(str(source), arcname=name)
+            info.uid = info.gid = 0
+            info.uname = info.gname = ""
+            info.mtime = 0
+            with source.open("rb") as stream:
+                bundle.addfile(info, stream)
+
     release_hashes = args.output / "SHA256SUMS.txt"
     release_hashes.write_text(
         f"{sha256(gzip_path)}  {gzip_path.name}\n"
         f"{sha256(raw_path)}  {raw_path.name}\n"
-        f"{sha256(zip_path)}  {zip_path.name}\n",
+        f"{sha256(zip_path)}  {zip_path.name}\n"
+        f"{sha256(debug_path)}  {debug_path.name}\n",
         encoding="ascii",
         newline="\n",
     )
