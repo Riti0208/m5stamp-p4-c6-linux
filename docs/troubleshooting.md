@@ -85,6 +85,13 @@ drive and reboot to restore the defaults (see the README).
 in the `crashlog` partition. `reason=1` is a watchdog reset. Resolve `epc` and
 `ra` with the `System.map` of the exact kernel `Image` that is flashed.
 
+The capsule holds only registers. For the kernel log of the crashed boot,
+build a test image with `EASYSTICK_PSTORE=1` (m3-lab only). It keeps an oops
+or panic and the console tail in 64 KB of reserved PSRAM; after the reset,
+as root, read `/sys/fs/pstore/` (`ES_PSTORE OK: N record(s)` on the console).
+Whether PSRAM keeps its contents across a watchdog reset has not been
+checked on hardware yet, so an empty directory does not rule out a crash.
+
 ## Backup and recovery
 
 Back up the whole flash before experimenting:

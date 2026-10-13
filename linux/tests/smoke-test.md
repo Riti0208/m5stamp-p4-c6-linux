@@ -88,9 +88,19 @@ Record `dmesg | grep ES_SDIO_CLOCK` (root console; it is below the console logle
 time a 1 MB `scp` in both directions, and repeat steps 1, 4 and 6.  Only a
 rate that passes all of them should become the DTS default.
 
-## 8. Record
+## 8. pstore (images built with `EASYSTICK_PSTORE=1`, #26)
+
+```sh
+echo c > /proc/sysrq-trigger     # deliberate panic; sysrq is only in this image
+```
+
+After the panic=5 reset, `ES_PSTORE OK` must report at least one record and
+`/sys/fs/pstore/dmesg-ramoops-0` must hold the panic.  Repeat with a
+watchdog reset (`EASYSTICK_WDT_TEST_*`) to learn whether PSRAM survives it.
+
+## 9. Record
 
 Write `linux/tests/<version>-hardware-validation-<date>.md` with the image
 SHA-256s, the `check-boot-log.py` output of steps 1–2, and the results of
-3–7.  The release workflow refuses assets whose hashes are not in such a
+3–8.  The release workflow refuses assets whose hashes are not in such a
 record.

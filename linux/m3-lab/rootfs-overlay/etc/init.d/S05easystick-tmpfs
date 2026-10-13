@@ -176,6 +176,17 @@ start() {
 	fi
 	echo 1 > /proc/sys/vm/oom_kill_allocating_task 2>/dev/null || true
 
+	# ramoops records of the previous boot, in images built with
+	# EASYSTICK_PSTORE=1 (#26).
+	if [ -d /sys/fs/pstore ] && grep -qw pstore /proc/filesystems 2>/dev/null; then
+		if mount -t pstore -o nosuid,nodev,noexec pstore /sys/fs/pstore 2>/dev/null; then
+			n=$(ls /sys/fs/pstore | grep -c '' || true)
+			es_log "ES_PSTORE OK: $n record(s) in /sys/fs/pstore"
+		else
+			es_log "ES_PSTORE FAIL: mount"
+		fi
+	fi
+
 	# OverlayFS for writable /home, /root, /var/lib
 	es_log "ES_OVERLAY BEGIN"
 	for d in /home /root /var/lib; do

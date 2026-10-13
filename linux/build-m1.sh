@@ -33,6 +33,9 @@ keeps the image that the hardware validation records describe.
 Set EASYSTICK_LEGAL_INFO=1 to also run Buildroot's legal-info into
 <vendor>/buildroot/legal-info (sources, patches and license texts, #31).  It
 does not change any image.
+Set EASYSTICK_PSTORE=1 with --profile m3-lab to reserve 64 KB of PSRAM for
+ramoops (kernel oops/panic and console tail, #26).  Whether PSRAM keeps it
+across a watchdog reset is not verified on hardware.
 Set EASYSTICK_BUILDROOT_JLEVEL=1 to serialize nested Buildroot package makes.
 This is useful for BusyBox versions whose generated applet tables are not safe
 when install-noclobber is invoked in parallel.
@@ -95,6 +98,16 @@ case "${EASYSTICK_LAB_TOOLS:-1}" in
 		lab_tools_identity=" lab-tools=0"
 		;;
 	*) echo "EASYSTICK_LAB_TOOLS must be 0 or 1" >&2; exit 2 ;;
+esac
+# ramoops in PSRAM (#26), opt-in until survival across a reset is measured.
+pstore_identity=""
+case "${EASYSTICK_PSTORE:-0}" in
+	0) ;;
+	1)
+		$lab_profile || { echo "EASYSTICK_PSTORE=1 requires --profile m3-lab" >&2; exit 2; }
+		pstore_identity=" pstore=1"
+		;;
+	*) echo "EASYSTICK_PSTORE must be 0 or 1" >&2; exit 2 ;;
 esac
 sdio_default_mhz="${EASYSTICK_SDIO_DEFAULT_MHZ:-5}"
 case "$sdio_default_mhz" in
@@ -914,6 +927,25 @@ if [[ -n "$sdio_max_identity" ]]; then
 	}
 	sed -i "s/max-frequency = <400000>;/max-frequency = <${EASYSTICK_SDIO_MAX_KHZ}000>;/" "$dts_file"
 fi
+if [[ -n "$pstore_identity" ]]; then
+	# 64 KB just below the boot-update request page; the boot-shim does not
+	# load anything there (kernel 0x48000000, DTB 0x48800000, boot FAT
+	# 0x499c0000).
+	dts_file="${dts_stage}/espressif/easystick-stamp-p4.dts"
+	[[ $(grep -c 'linux_nommu_pool: nommu-userspace-pool@49a00000 {' "$dts_file") == 1 ]] || {
+		echo "PSTORE_GATE_FAIL: nommu pool node not found in the DTS" >&2
+		exit 1
+	}
+	sed -i '/linux_nommu_pool: nommu-userspace-pool@49a00000 {/i\
+		ramoops@499af000 {\
+			compatible = "ramoops";\
+			reg = <0x499af000 0x00010000>;\
+			record-size = <0x4000>;\
+			console-size = <0x8000>;\
+			ecc-size = <16>;\
+		};\
+' "$dts_file"
+fi
 cp -- "${firmware_root}/linux/linux.config" "${kernel_config_fragment}"
 grep -Fqx -- "CONFIG_SMP=n" "${firmware_root}/linux/linux.config" || {
 	echo "UP kernel config gate failed: source linux.config must keep CONFIG_SMP=n" >&2
@@ -928,6 +960,19 @@ if $network_profile; then
 fi
 if $lab_profile; then
 	cat "${firmware_root}/linux/m3-lab/kernel.config.fragment" >>"${kernel_config_fragment}"
+fi
+if [[ -n "$pstore_identity" ]]; then
+	cat >>"${kernel_config_fragment}" <<'EOF'
+
+# ramoops in reserved PSRAM (EASYSTICK_PSTORE=1, #26).
+CONFIG_PSTORE=y
+CONFIG_PSTORE_RAM=y
+CONFIG_PSTORE_CONSOLE=y
+CONFIG_PSTORE_DEFLATE_COMPRESS=n
+# Root-only /proc/sysrq-trigger for a deliberate panic in the smoke test.
+CONFIG_MAGIC_SYSRQ=y
+CONFIG_MAGIC_SYSRQ_DEFAULT_ENABLE=0x0
+EOF
 fi
 if [[ "$stacktrace_diagnostics" == "1" ]]; then
 	cat >>"${kernel_config_fragment}" <<'EOF'
@@ -1024,7 +1069,7 @@ cmd53_bb_pa_id="${EASYSTICK_CMD53_BB_PA:-none}"
 cmd53_bb_0052_sha_id="${EASYSTICK_CMD53_BB_0052_SHA256:-none}"
 cmd53_bb_0053_sha_id="${EASYSTICK_CMD53_BB_0053_SHA256:-none}"
 cmd53_bb_0054_sha_id="${EASYSTICK_CMD53_BB_0054_SHA256:-none}"
-profile_identity="profile-contract=21 profile=${profile} network=${network_profile} ssh=${ssh_profile} lab=${lab_profile} sdio-default-mhz=${sdio_default_mhz} wdt-test-timeout-s=${wdt_test_timeout_s} wdt-test-no-feed=${wdt_test_no_feed} stacktrace-diagnostics=${stacktrace_diagnostics} stacktrace-module-debug-strip=${stacktrace_diagnostics} esp-hosted-cmd52-trace=${cmd52_trace} esp-hosted-cmd52-marker=${cmd52_marker} ssh-ledger=${EASYSTICK_SSH_LEDGER:-0} tcp22-ledger=${EASYSTICK_TCP22_LEDGER:-0} esp-hosted-tx-ledger=${EASYSTICK_ESPHOSTED_TX_LEDGER:-0} esp-hosted-diagnostics=${EASYSTICK_ESPHOSTED_DIAGNOSTICS:-0} dw-mmc-cmd53-err-prov=${EASYSTICK_DW_MMC_CMD53_ERR_PROV:-0} cmd53-retention-bb=${EASYSTICK_CMD53_RETENTION_BB:-0} cmd53-bb-allow-pio=${cmd53_bb_allow_pio} cmd53-bb-pa=${cmd53_bb_pa_id} cmd53-bb-0052-sha=${cmd53_bb_0052_sha_id} cmd53-bb-0053-sha=${cmd53_bb_0053_sha_id} cmd53-bb-0054-sha=${cmd53_bb_0054_sha_id} force-pio=${EASYSTICK_SDIO_FORCE_PIO:-1} idmac-inv=${EASYSTICK_IDMAC_DESC_INVALIDATE:-0} idmac-nc=${EASYSTICK_IDMAC_NONCOHERENT_RING:-0} cmd53-rx-desc=${EASYSTICK_CMD53_RX_DESC_BYTES:-0} buildroot-jlevel=${EASYSTICK_BUILDROOT_JLEVEL:-auto} c68=${c68_profile} top=${c68_top_profile} stress=${c68_stress_profile} l3=${EASYSTICK_C68_L3_SMOKE:-0} tsens-linux=${EASYSTICK_TSENS_LINUX:-0} tsens-oracle=${EASYSTICK_TSENS_ORACLE:-0}${lab_tools_identity}${sdio_max_identity}"
+profile_identity="profile-contract=21 profile=${profile} network=${network_profile} ssh=${ssh_profile} lab=${lab_profile} sdio-default-mhz=${sdio_default_mhz} wdt-test-timeout-s=${wdt_test_timeout_s} wdt-test-no-feed=${wdt_test_no_feed} stacktrace-diagnostics=${stacktrace_diagnostics} stacktrace-module-debug-strip=${stacktrace_diagnostics} esp-hosted-cmd52-trace=${cmd52_trace} esp-hosted-cmd52-marker=${cmd52_marker} ssh-ledger=${EASYSTICK_SSH_LEDGER:-0} tcp22-ledger=${EASYSTICK_TCP22_LEDGER:-0} esp-hosted-tx-ledger=${EASYSTICK_ESPHOSTED_TX_LEDGER:-0} esp-hosted-diagnostics=${EASYSTICK_ESPHOSTED_DIAGNOSTICS:-0} dw-mmc-cmd53-err-prov=${EASYSTICK_DW_MMC_CMD53_ERR_PROV:-0} cmd53-retention-bb=${EASYSTICK_CMD53_RETENTION_BB:-0} cmd53-bb-allow-pio=${cmd53_bb_allow_pio} cmd53-bb-pa=${cmd53_bb_pa_id} cmd53-bb-0052-sha=${cmd53_bb_0052_sha_id} cmd53-bb-0053-sha=${cmd53_bb_0053_sha_id} cmd53-bb-0054-sha=${cmd53_bb_0054_sha_id} force-pio=${EASYSTICK_SDIO_FORCE_PIO:-1} idmac-inv=${EASYSTICK_IDMAC_DESC_INVALIDATE:-0} idmac-nc=${EASYSTICK_IDMAC_NONCOHERENT_RING:-0} cmd53-rx-desc=${EASYSTICK_CMD53_RX_DESC_BYTES:-0} buildroot-jlevel=${EASYSTICK_BUILDROOT_JLEVEL:-auto} c68=${c68_profile} top=${c68_top_profile} stress=${c68_stress_profile} l3=${EASYSTICK_C68_L3_SMOKE:-0} tsens-linux=${EASYSTICK_TSENS_LINUX:-0} tsens-oracle=${EASYSTICK_TSENS_ORACLE:-0}${lab_tools_identity}${sdio_max_identity}${pstore_identity}"
 
 set_config_value() {
 	local config=$1 key=$2 value=$3
