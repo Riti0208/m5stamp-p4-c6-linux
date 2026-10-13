@@ -687,8 +687,13 @@ static void prepare_cpu1_linux_trampoline(uint32_t entry, uint32_t dtb_pa)
 #endif /* !EASYSTICK_UP_BOOT */
 #endif /* EASYSTICK_C68_CLEAN_RELEASE */
 
+#ifndef EASYSTICK_GIT_REV
+#define EASYSTICK_GIT_REV "unknown"
+#endif
+
 void app_main(void)
 {
+	ESP_LOGI(TAG, "boot-shim git=%s", EASYSTICK_GIT_REV);
 #ifdef EASYSTICK_CMD53_RETENTION_BB
 	/*
 	 * Retention dump must run before C6/SDIO/Linux handoff. Do not clear

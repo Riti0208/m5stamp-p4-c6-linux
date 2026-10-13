@@ -48,6 +48,8 @@ command -v idf.py >/dev/null || {
 }
 
 export IDF_TARGET=esp32p4
+ES_GIT_REV=${ES_GIT_REV:-$(git -C "${script_dir}" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)}
+export ES_GIT_REV
 export EASYSTICK_BOOT_PROFILE="$profile"
 if [[ "$profile" == c68 ]]; then
 	export EASYSTICK_C68_CLEAN_RELEASE=1

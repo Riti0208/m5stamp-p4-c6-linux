@@ -5,6 +5,11 @@ idf_component_register(
     INCLUDE_DIRS "."
 )
 
+# Build identification (#22): the git revision is printed at boot.
+if(DEFINED ENV{ES_GIT_REV} AND NOT "$ENV{ES_GIT_REV}" STREQUAL "")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE EASYSTICK_GIT_REV="$ENV{ES_GIT_REV}")
+endif()
+
 # Keep M1's proven boot path free of SDIO side effects.  The M2 and C68
 # network builds opt in explicitly when they build this project.
 if("$ENV{EASYSTICK_BOOT_PROFILE}" STREQUAL "m2" OR
