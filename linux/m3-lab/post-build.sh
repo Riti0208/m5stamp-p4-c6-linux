@@ -96,7 +96,8 @@ GIT_REV=${ES_GIT_REV:-unknown}
 GIT_DIRTY=${ES_GIT_DIRTY:-0}
 mkdir -p "${TARGET_DIR}/etc"
 {
+	echo "version=${ES_VERSION:-unknown}"
 	echo "git=${GIT_REV}"
 	echo "dirty=${GIT_DIRTY}"
-	echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+	echo "build_date=$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y-%m-%dT%H:%M:%SZ)"
 } > "${TARGET_DIR}/etc/easystick-release"

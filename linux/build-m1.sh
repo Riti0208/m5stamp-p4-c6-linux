@@ -173,7 +173,9 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 firmware_root=$(cd -- "${script_dir}/.." && pwd)
 ES_GIT_REV=$(git -C "$firmware_root" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 if [ -n "$(git -C "$firmware_root" status --porcelain --untracked-files=no 2>/dev/null)" ]; then ES_GIT_DIRTY=1; else ES_GIT_DIRTY=0; fi
-export ES_GIT_REV ES_GIT_DIRTY
+ES_VERSION=$(git -C "$firmware_root" describe --tags --always 2>/dev/null || echo unknown)
+: "${SOURCE_DATE_EPOCH:=$(git -C "$firmware_root" log -1 --format=%ct 2>/dev/null || date +%s)}"
+export ES_GIT_REV ES_GIT_DIRTY ES_VERSION SOURCE_DATE_EPOCH
 external_source_root="${script_dir}/buildroot-external"
 lock_file="${firmware_root}/versions.lock.json"
 if [[ "$source_arg" == "--vendor" ]]; then
