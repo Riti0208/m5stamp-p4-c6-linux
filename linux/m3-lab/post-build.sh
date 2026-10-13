@@ -39,9 +39,10 @@ chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-update-status"
 chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-info"
 chmod 0644 "${TARGET_DIR}/etc/inetd.conf"
 
-# BusyBox applet reduction (busybox.fragment) removed start-stop-daemon, ntpd
-# and hwclock.  Init scripts that depend on them can only print "applet not
-# found" and FAIL, and S01seedrng runs before the /var/lib overlay exists
+# BusyBox applet reduction (busybox.fragment) removed start-stop-daemon and
+# hwclock; ntpd is only used one-shot by S40network (#25), not as a daemon.
+# Init scripts that depend on them can only print "applet not found" and
+# FAIL, and S01seedrng runs before the /var/lib overlay exists
 # (read-only rootfs).  Drop them from the lab image.
 rm -f "${TARGET_DIR}/etc/init.d/S01syslogd" \
 	"${TARGET_DIR}/etc/init.d/S01seedrng" \
@@ -56,7 +57,7 @@ for applet in \
 	fold getfattr hexedit lsscsi lzcat lzopcat mesg nl nproc od paste \
 	setfattr sha1sum sha3sum sha512sum shred svc svok telnet tree truncate \
 	ts tsort unix2dos unlink unlzop uudecode uuencode w wget who whoami \
-	xzcat arping fsfreeze i2ctransfer mim ntpd partprobe; do
+	xzcat arping fsfreeze i2ctransfer mim partprobe; do
 	for dir in bin sbin usr/bin usr/sbin; do
 		link="${TARGET_DIR}/${dir}/${applet}"
 		if [ -L "${link}" ]; then

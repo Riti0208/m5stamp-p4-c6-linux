@@ -207,6 +207,8 @@ wifi_psk=YOUR_WIFI_PASSWORD
 
 The board then joins that network as a station (leave `wifi_psk` out for an open network). With `wifi_mode=ap` the same two lines define the SoftAP instead (`channel=` picks the channel). When set, these lines take precedence over `wpa_supplicant.conf`. Invalid values (PSK not 8-63 characters, SSID over 32 bytes, `"` or `\` in either) are reported on the serial console as `M3-lab: CONFIG ERROR: ...` and the board keeps using `wpa_supplicant.conf`.
 
+The board has no RTC. The clock starts at the image build time; after a station-mode DHCP lease it is set once from `pool.ntp.org` (`M3-lab: clock set from NTP` on the console). `ntp_server=` in `config.txt` picks another server and `ntp_server=none` turns this off.
+
 ### 1. Connecting to an Existing Wi-Fi Network (Station / Client Mode)
 
 From the terminal (either over serial console or via SSH over default SoftAP `192.168.4.1`), run the following commands:

@@ -120,6 +120,17 @@ config_wifi() {
 	echo "M3-lab: Wi-Fi config generated from config.txt (ssid=$w_ssid mode=${w_mode:-sta})"
 }
 
+# No RTC: set the clock once from NTP after a station lease (#25).  -q exits
+# after the first sync so no daemon stays resident.  ntp_server= in config.txt
+# overrides the pool; ntp_server=none disables it.
+sync_time() {
+	command -v ntpd >/dev/null 2>&1 || return 0
+	srv=$(conf_get ntp_server "$CFG" | tr -d ' ')
+	[ "$srv" = "none" ] && return 0
+	( ntpd -n -q -p "${srv:-pool.ntp.org}" >/dev/null 2>&1 &&
+		echo "M3-lab: clock set from NTP: $(date)" ) &
+}
+
 start() {
 	# Cmdline keeps loglevel=8 for bring-up captures, but console traffic at
 	# that level still starves SDIO/ARP on this NOMMU target even after the
@@ -247,7 +258,11 @@ start() {
 				if iw dev wlan0 link 2>/dev/null | grep -q 'Connected'; then
 					echo "M3-lab: association complete; configuring IPv4"
 					if command -v udhcpc >/dev/null 2>&1; then
-						run_dhcp || dhcp_failed
+						if run_dhcp; then
+							sync_time
+						else
+							dhcp_failed
+						fi
 					else
 						dhcp_failed
 					fi

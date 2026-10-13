@@ -54,7 +54,11 @@ CONFIG_FEATURE_VI_ASK_TERMINAL=y
 # CONFIG_FEATURE_IP_ROUTE is not set
 
 # 3. Bulky network clients & services (~20KB)
-# CONFIG_NTPD is not set
+# ntpd is kept for a one-shot `ntpd -q` after DHCP in station mode (#25);
+# the daemon and server parts stay out.
+CONFIG_NTPD=y
+# CONFIG_FEATURE_NTPD_SERVER is not set
+# CONFIG_FEATURE_NTPD_CONF is not set
 # CONFIG_IFUP is not set
 # CONFIG_IFDOWN is not set
 # CONFIG_FEATURE_IFUPDOWN_EXTERNAL_DHCP is not set

@@ -10,7 +10,7 @@ scripts=$(find "$root/linux/m3-lab/rootfs-overlay" "$root/linux/m3-lab/post-buil
 	-type f \( -path '*/init.d/*' -o -path '*/usr/sbin/*' -o -name post-build.sh \) 2>/dev/null)
 
 # Commands known to be missing from the BusyBox build (see issue #7).
-missing="pidof start-stop-daemon ntpd hwclock awk free top ip ifup ifdown wget telnet"
+missing="pidof start-stop-daemon hwclock awk free top ip ifup ifdown wget telnet"
 
 fail=0
 for f in $scripts; do
