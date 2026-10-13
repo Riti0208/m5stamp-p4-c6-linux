@@ -210,6 +210,8 @@ The board then joins that network as a station (leave `wifi_psk` out for an open
 
 The board has no RTC. The clock starts at the image build time; after a station-mode DHCP lease it is set once from `pool.ntp.org` (`M3-lab: clock set from NTP` on the console). `ntp_server=` in `config.txt` picks another server and `ntp_server=none` turns this off.
 
+By default the kernel feeds the hardware watchdog, so the board resets only when the kernel itself hangs. `watchdog=1` in `config.txt` hands the watchdog to a userland feeder: the board then also resets about 30 s after userland stops being scheduled, or 60 s after the SSH server (inetd) disappears and does not come back. `wpa_supplicant` and `udhcpd` are restarted automatically if they exit.
+
 ### 1. Connecting to an Existing Wi-Fi Network (Station / Client Mode)
 
 From the terminal (either over serial console or via SSH over default SoftAP `192.168.4.1`), run the following commands:

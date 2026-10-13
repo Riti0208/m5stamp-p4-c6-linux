@@ -19,8 +19,10 @@ for path in \
 	"${TARGET_DIR}/etc/init.d/S40network" \
 	"${TARGET_DIR}/etc/init.d/S45bootsync" \
 	"${TARGET_DIR}/etc/init.d/S85easystick-ssh" \
+	"${TARGET_DIR}/etc/init.d/S90easystick-watchdog" \
 	"${TARGET_DIR}/usr/sbin/easystick-bootsync" \
 	"${TARGET_DIR}/usr/sbin/easystick-usb-lun" \
+	"${TARGET_DIR}/usr/sbin/easystick-watchdog" \
 	"${TARGET_DIR}/usr/sbin/easystick-update-status" \
 	"${TARGET_DIR}/etc/inetd.conf"; do
 	if [ ! -f "${path}" ]; then
@@ -33,8 +35,10 @@ chmod 0755 "${TARGET_DIR}/etc/init.d/S05easystick-tmpfs"
 chmod 0755 "${TARGET_DIR}/etc/init.d/S40network"
 chmod 0755 "${TARGET_DIR}/etc/init.d/S45bootsync"
 chmod 0755 "${TARGET_DIR}/etc/init.d/S85easystick-ssh"
+chmod 0755 "${TARGET_DIR}/etc/init.d/S90easystick-watchdog"
 chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-bootsync"
 chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-usb-lun"
+chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-watchdog"
 chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-update-status"
 chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-info"
 chmod 0644 "${TARGET_DIR}/etc/inetd.conf"
@@ -118,6 +122,8 @@ wifi_mode=ap
 #wifi_psk=MyPassphrase
 # Keys only over SSH; needs an authorized_keys file on this drive.
 #ssh_password_auth=no
+# Reset the board if userland stops responding or SSH (inetd) stays down.
+#watchdog=1
 # Put an empty file named factory-reset on this drive and reboot to restore
 # these defaults and generate new credentials.
 EOF
