@@ -22,11 +22,10 @@ Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SS
 - **SMP (experimental)**: The kernel is built with SMP (`Linux 6.18.35 #1 SMP riscv32 GNU/Linux`), but the shipped DTB boots with `maxcpus=1`, so only CPU0 is online (`/sys/devices/system/cpu/online` = `0`). Setting `maxcpus=2` currently hangs during userland start and ends in a watchdog reset loop (issue #5). `maxcpus` in `/boot/config.txt` is informational and is not read by anything.
 - **Wi-Fi Companion**: ESP32-C6 (M5Stack Stamp-AddOn C6) connected via high-speed 4-bit SDIO.
 - **Out-of-the-Box SoftAP**:
-  - Automatically broadcasts Wi-Fi SSID: **`m5`**
-  - WPA2-PSK Password: **`m5stamp-p4-c6`**
+  - Broadcasts a per-device SSID **`m5-XXXX`** with a WPA2-PSK passphrase generated on first boot (see [Per-device credentials](#per-device-credentials)).
   - Integrated `udhcpd` DHCP server assigning client IPs in `192.168.4.2` – `192.168.4.20` (Gateway: `192.168.4.1`).
 - **Pre-installed Developer Tools**:
-  - **SSH Server**: Password-enabled Dropbear on TCP port 22 (`m5` / `m5stamp-p4-c6`).
+  - **SSH Server**: Password-enabled Dropbear on TCP port 22 (user `m5`, per-device password from `credentials.txt`).
   - **`vi` Editor**: Full-featured BusyBox `vi` with search, undo, visual buffers, and syntax assistance.
   - **MicroPython (`python3`)**: MicroPython v1.22.2 compiled with bFLT Load-to-Ram (`-r`) and position-independent code (`-fPIC`) for stable NOMMU execution.
   - **Writable Filesystem (OverlayFS)**: While the root filesystem is SquashFS (read-only for durability), RAM-backed OverlayFS is mounted on `/home`, `/root`, and `/var/lib` so users can create and edit scripts during the current boot. Its contents are lost when power is removed.
@@ -58,10 +57,21 @@ Linux / macOS serial examples, how to open the console without resetting the boa
 
 | Service | SSID / Host | Username | Password | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| **Wi-Fi SoftAP** | `m5` | — | `m5stamp-p4-c6` | WPA2-PSK, 2.4 GHz 802.11b/g/n |
-| **SSH (`dropbear`)**| `192.168.4.1:22` | `m5` | `m5stamp-p4-c6` | Default user with home directory `/home/m5` |
+| **Wi-Fi SoftAP** | `m5-XXXX` | — | `psk=` in `credentials.txt` | WPA2-PSK, 2.4 GHz 802.11b/g/n, channel 1/6/11 |
+| **SSH (`dropbear`)**| `192.168.4.1:22` | `m5` | `password=` in `credentials.txt` | Default user with home directory `/home/m5` |
 | **Runtime status** | SSH / serial | — | — | Read `/tmp/easystick-status.txt`; the USB FAT image is not modified while exported |
 | **Serial Console** | `COMx` (115200 8N1) | *(root shell)* | *(none)* | `ttyGS1` over USB-Serial/JTAG. Press `Enter` to activate |
+
+### Per-device credentials
+
+Every board gets its own credentials on first boot; no SSID or password is shared between boards.
+
+- On first boot `S05easystick-tmpfs` writes `credentials.txt` to the USB drive: `device_id=`, `password=` (SSH/console password of user `m5`), and, while `wpa_supplicant.conf` is still the shipped default, `ssid=m5-<device_id>` and `psk=`. That `wpa_supplicant.conf` is rewritten with the new SSID and passphrase, and `channel=` (1, 6 or 11, chosen from the device id) is added to `config.txt`.
+- The same values are printed once on the serial console as `ES_CREDENTIALS NEW: ...` and are readable as root in `/tmp/credentials.txt`. **The serial log then contains the password; redact that line before sharing logs.**
+- The generated files are staged and written to flash at the **next normal reboot** (`boot update committed` in the serial log). If power is removed before that reboot, the next boot generates new credentials. Reboot once after first boot.
+- `password=` is applied to user `m5` at every boot. To change it, edit `password=` (8-64 characters, no `:`) in `credentials.txt`, safe-eject the drive and reboot. `passwd` over SSH only lasts until the next boot.
+- `channel=` (1-13) in `config.txt` sets the SoftAP channel without editing `wpa_supplicant.conf`.
+- A custom `wpa_supplicant.conf` (one that is not the shipped `m5` / `m5stamp-p4-c6` default) is never overwritten; only `password=` is generated then.
 
 ---
 
@@ -137,12 +147,12 @@ esptool.py --chip esp32p4 --port COM10 --baud 460800 \
    - Live network status is available as `/tmp/easystick-status.txt` over SSH or serial. The exported USB drive is strictly dedicated to boot configuration (`cmdline.txt`, `config.txt`, `wpa_supplicant.conf`).
    - Imported settings are applied immediately and staged in PSRAM. Reboot the board normally to commit the validated image to the inactive flash slot. The boot shim verifies the image CRC, switches metadata only after readback succeeds, and retains the previous slot if power is lost during the flash update.
    - Power loss before that reboot discards the staged change. Wait for `boot update committed` in the serial log before removing power if the setting must survive the next boot.
-3. On your laptop or smartphone, connect to Wi-Fi SSID **`m5`** using password **`m5stamp-p4-c6`**.
+3. Open `credentials.txt` on the USB drive (or read the `ES_CREDENTIALS NEW` line in the serial log) and connect to the Wi-Fi SSID `ssid=` with the passphrase `psk=`.
 4. Your device will receive an IP address such as `192.168.4.2`.
 5. Open a terminal and SSH into the board:
    ```bash
    ssh m5@192.168.4.1
-   # Password: m5stamp-p4-c6
+   # Password: password= from credentials.txt
    ```
 6. You can now edit files and run Python programs immediately:
    ```bash
@@ -181,7 +191,7 @@ power, and protection connections; GPIO wiring alone is not sufficient.
 
 ## Wi-Fi Configuration: Switching Access Points & Modes
 
-The system boots by default into **SoftAP mode** (SSID: `m5`, Password: `m5stamp-p4-c6`), allowing immediate configuration from any Wi-Fi-enabled phone or computer without needing a local Wi-Fi router.
+The system boots by default into **SoftAP mode** (per-device SSID `m5-XXXX` and passphrase, see `credentials.txt`), allowing immediate configuration from any Wi-Fi-enabled phone or computer without needing a local Wi-Fi router.
 
 However, you can dynamically connect the Stamp-P4 to your existing Wi-Fi network (Station mode), or customize the SoftAP parameters, **directly from the Linux terminal without re-flashing or re-building!**
 
@@ -217,7 +227,7 @@ Once connected, `ifconfig wlan0` will show your new local IP address (e.g. `192.
 
 ```bash
 ssh m5@<YOUR_NEW_IP>
-# Password: m5stamp-p4-c6
+# Password: password= from credentials.txt
 ```
 
 *(Note: To test link state manually, run `iw dev wlan0 link` to view connection status, SSID, signal level, and BSSID).*

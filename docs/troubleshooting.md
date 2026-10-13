@@ -46,19 +46,26 @@ stty -F /dev/ttyACM0 raw -echo       # `stty -f` on macOS
 
 ## Troubleshooting
 
-**SoftAP (`m5`) is not visible.** Watch the console for `M3-lab: SoftAP started`.
+**SoftAP (`m5-XXXX`) is not visible.** The SSID is per device; read `ssid=` in
+`credentials.txt` on the USB drive. Watch the console for `M3-lab: SoftAP started`
+and `M3-lab: SoftAP channel`.
 If `wlan0 did not appear`, the SDIO link to the C6 failed (check the C6
 firmware and the `ES_SDIO_*` lines). If `wifi_mode=sta` is set in `config.txt`,
 or `wpa_supplicant.conf` has no `mode=2`, the board starts as a station instead.
 
 **Station mode does not connect.** Check `wpa_supplicant.conf` on the USB drive
 (PSK of 8-63 characters, correct SSID). If `wpa_supplicant` rejects the file the
-board falls back to the default AP configuration and logs
+board falls back to the built-in AP configuration (SSID `m5`, passphrase
+`m5stamp-p4-c6`) and logs
 `wpa_supplicant failed with ...`. If DHCP fails the status is `DHCP_FAILED`.
 
 **Cannot log in over SSH.** The SSH server runs from inetd with at most three
 simultaneous connections; wait for stale connections to close or reboot. Root
-login is disabled; use the `m5` user.
+login is disabled; use the `m5` user with `password=` from `credentials.txt`
+(`/tmp/credentials.txt` as root on the serial console). Look for
+`ES_CREDENTIALS` lines: if the password was rejected or `cryptpw` failed, the
+built-in password `m5stamp-p4-c6` stays active. A power cycle before the first
+reboot regenerates the credentials; reboot once after first boot to save them.
 
 **The USB drive does not appear.** Look for `ES_USB_GADGET OK` on the console.
 Configuration edits are applied only after the host's safe-eject action.
