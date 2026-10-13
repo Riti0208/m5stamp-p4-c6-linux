@@ -71,3 +71,17 @@ done
 if [ -f "${TARGET_DIR}/etc/shadow" ]; then
 	sed -i 's/^root:[^:]*:/root:!:/' "${TARGET_DIR}/etc/shadow"
 fi
+
+# NOMMU has no stack guard pages: the elf2flt default of 4 KB silently corrupts
+# .data/.bss on overflow.  Raise the bFLT stack for the network-facing daemons.
+# 32 KB (same as micropython) keeps three Dropbear children within the RAM budget.
+FLTHDR="${HOST_DIR:+${HOST_DIR}/bin/flthdr}"
+if [ -n "${FLTHDR}" ] && [ -x "${FLTHDR}" ]; then
+	for bin in usr/sbin/dropbear usr/bin/dbclient usr/sbin/wpa_supplicant usr/sbin/iw; do
+		if [ -f "${TARGET_DIR}/${bin}" ]; then
+			"${FLTHDR}" -s 32768 "${TARGET_DIR}/${bin}"
+		fi
+	done
+else
+	echo "M3-lab: flthdr not found (HOST_DIR unset); bFLT stack sizes left at default" >&2
+fi
