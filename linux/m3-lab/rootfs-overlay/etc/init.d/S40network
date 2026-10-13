@@ -24,6 +24,23 @@ dhcp_failed() {
 	return 0
 }
 
+
+# Run udhcpc and wait for an address.  NOMMU BusyBox re-execs and daemonizes
+# udhcpc unless -f is given, so the parent returns 0 before any lease exists.
+# With -f in a background job the client keeps running and renews the lease.
+run_dhcp() {
+	udhcpc -f -i wlan0 -t 5 -T 3 >/dev/null 2>&1 &
+	n=0
+	while [ "$n" -lt 30 ]; do
+		if ifconfig wlan0 2>/dev/null | grep 'inet addr:' | grep -vq 'inet addr:0\.0\.0\.0'; then
+			return 0
+		fi
+		n=$((n + 1))
+		sleep 1
+	done
+	return 1
+}
+
 # Start wpa_supplicant with $CONF; if it rejects the file (short psk, syntax
 # error, BOM...), fall back to the built-in default so the board stays reachable.
 start_wpa() {
@@ -34,6 +51,7 @@ start_wpa() {
 	CONF=/etc/easystick/wpa_supplicant.conf
 	wpa_supplicant -B -q -i wlan0 -c "$CONF" || echo "M3-lab: wpa_supplicant fallback failed"
 }
+
 start() {
 	# Cmdline keeps loglevel=8 for bring-up captures, but console traffic at
 	# that level still starves SDIO/ARP on this NOMMU target even after the
@@ -159,7 +177,7 @@ start() {
 				if iw dev wlan0 link 2>/dev/null | grep -q 'Connected'; then
 					echo "M3-lab: association complete; configuring IPv4"
 					if command -v udhcpc >/dev/null 2>&1; then
-						udhcpc -i wlan0 -n -t 5 2>/dev/null || dhcp_failed
+						run_dhcp || dhcp_failed
 					else
 						dhcp_failed
 					fi
