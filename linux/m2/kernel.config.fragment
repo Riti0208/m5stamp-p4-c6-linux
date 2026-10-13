@@ -60,3 +60,9 @@ CONFIG_CMDLINE_FALLBACK=y
 # CONFIG_SLUB_DEBUG is not set
 # No userland program uses io_uring (#29).
 # CONFIG_IO_URING is not set
+# The board has no input devices (no keyboard, mouse or gpio-keys node), and
+# nothing here speaks ethtool netlink (#29).
+# CONFIG_INPUT is not set
+# CONFIG_SERIO is not set
+# CONFIG_HID_SUPPORT is not set
+# CONFIG_ETHTOOL_NETLINK is not set
