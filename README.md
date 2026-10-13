@@ -48,10 +48,21 @@ Linux / macOS serial examples, how to open the console without resetting the boa
 
 ## C6 Firmware, Security Features & Regulatory Notes
 
-- **C6 firmware**: Linux expects the ESP32-C6 to run ESP-Hosted NG 1.0.6 (the driver logs `ESP-Hosted Version: NG-1.0.6.0.1`). The release images flash the P4 only; a C6 running another version may fail to attach over SDIO. Check the version in the boot log.
+- **C6 firmware**: Linux expects the ESP32-C6 to run ESP-Hosted NG 1.0.6 (the driver logs `ESP-Hosted Version: NG-1.0.6.0.1`). The release images flash the P4 only; a C6 running another version may fail to attach over SDIO. Check the version in the boot log: a mismatch is logged as `Incompatible ESP Host-firmware release detected` with both versions, and no log line at all means the C6 is not running ESP-Hosted NG. See [Updating the C6](#updating-the-c6).
 - **Secure Boot and flash encryption are disabled.** Physical access allows reading the flash (including Wi-Fi credentials in the boot FAT) and writing arbitrary firmware. See [SECURITY.md](SECURITY.md).
 - **Wi-Fi regulatory domain**: no `country=` is set by default, so the world regulatory domain applies. Set `country=` in `config.txt` for your region.
 - **Wi-Fi security**: WPA2-PSK only. Protected management frames are opt-in (`wifi_pmf=1`) and not yet tested with the C6 firmware; WPA3-SAE is not built.
+
+### Updating the C6
+
+The C6 on the Stamp AddOn has no USB port of its own; it is updated over the SDIO link from the P4 with a temporary P4 updater image, after which the Linux image is written back.
+
+1. Build the C6 image: `bash linux/m2/build-c6.sh --vendor <out>` (needs the locked ESP-IDF; `EASYSTICK_C6_BT=0` leaves out BLE, which Linux does not use). `<out>/C6_PATCH_MANIFEST.txt` records the `network_adapter.bin` SHA-256 and the applied patches.
+2. Build the updater: `bash linux/m2/build-ota-host.sh <external-source-root> <out>/build/network_adapter.bin <ota-out>` (the source root holds `esp_idf` and an `esp_hosted_mcu` checkout). It uses ESP-Hosted-MCU's `host_performs_slave_ota` example.
+3. Save a full 16 MB readback of the P4 first, then write the updater with `linux/m2/ota-host/flash-ota-host.ps1` (it refuses to run without `-AllowCandidateWrite` and a matching stock readback). The updater sends the C6 image over SDIO on its next boot.
+4. Write the Linux release image again and check the boot log for `ESP-Hosted Version: NG-1.0.6.0.1`.
+
+`tools/readback-c6-ng.ps1` reads the C6 flash through a C6 programmer port, if you have one wired, so the original C6 firmware can be kept. The SDIO update path was used during bring-up (`linux/tests/wlan0-regression-bisect-2026-08-12.md`); it is not part of the release workflow.
 
 ## Default Credentials & Connection
 
