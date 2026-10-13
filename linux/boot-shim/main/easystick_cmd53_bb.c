@@ -100,8 +100,14 @@ void easystick_crash_capsule_flush(void)
 	volatile struct easystick_crash_capsule *capsule =
 		&easystick_rtc_c.bb.crash;
 	struct easystick_crash_capsule verify;
+	struct easystick_crash_capsule out;
+	struct easystick_crash_capsule probe;
 	uint32_t slot_count;
 	uint32_t slot;
+	uint32_t i;
+	uint32_t best_seq = 0;
+	uint32_t best_slot = 0;
+	int have_best = 0;
 	esp_err_t err;
 
 	if (!crash_capsule_valid(capsule))
@@ -116,12 +122,36 @@ void easystick_crash_capsule_flush(void)
 	}
 
 	slot_count = partition->size / 0x1000u;
-	slot = capsule->sequence % slot_count;
+
+	/* The capsule in RTC memory is cleared after every flush, so its own
+	 * sequence is always 1.  Number records from the flash contents instead:
+	 * newest valid sequence + 1, written to the slot after the newest one. */
+	for (i = 0; i < slot_count; i++) {
+		if (esp_partition_read(partition, i * 0x1000u, &probe,
+				       sizeof(probe)) != ESP_OK)
+			continue;
+		if (!crash_capsule_valid((volatile const struct easystick_crash_capsule *)&probe))
+			continue;
+		if (!have_best || (int32_t)(probe.sequence - best_seq) > 0) {
+			best_seq = probe.sequence;
+			best_slot = i;
+			have_best = 1;
+		}
+	}
+	memcpy(&out, (const void *)capsule, sizeof(out));
+	if (have_best) {
+		out.sequence = best_seq + 1u;
+		if (out.sequence == 0u)
+			out.sequence = 1u;
+		out.commit = out.sequence ^ EASYSTICK_CRASH_CAPSULE_COMMIT_XOR;
+		slot = (best_slot + 1u) % slot_count;
+	} else {
+		slot = 0;
+	}
 	err = esp_partition_erase_range(partition, slot * 0x1000u, 0x1000u);
 	if (err == ESP_OK)
 		err = esp_partition_write(partition, slot * 0x1000u,
-					  (const void *)capsule,
-					  sizeof(*capsule));
+					  &out, sizeof(out));
 	if (err == ESP_OK)
 		err = esp_partition_read(partition, slot * 0x1000u, &verify,
 					 sizeof(verify));
@@ -130,7 +160,7 @@ void easystick_crash_capsule_flush(void)
 			   (unsigned)err);
 		return;
 	}
-	if (memcmp(&verify, (const void *)capsule, sizeof(verify)) != 0) {
+	if (memcmp(&verify, &out, sizeof(verify)) != 0) {
 		ets_printf("easystick-boot: CRASH_CAPSULE FLASH_VERIFY_FAIL\n");
 		return;
 	}
