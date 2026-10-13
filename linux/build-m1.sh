@@ -171,6 +171,9 @@ fi
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 firmware_root=$(cd -- "${script_dir}/.." && pwd)
+ES_GIT_REV=$(git -C "$firmware_root" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+if [ -n "$(git -C "$firmware_root" status --porcelain --untracked-files=no 2>/dev/null)" ]; then ES_GIT_DIRTY=1; else ES_GIT_DIRTY=0; fi
+export ES_GIT_REV ES_GIT_DIRTY
 external_source_root="${script_dir}/buildroot-external"
 lock_file="${firmware_root}/versions.lock.json"
 if [[ "$source_arg" == "--vendor" ]]; then

@@ -76,7 +76,10 @@ fi
 # NOMMU has no stack guard pages: the elf2flt default of 4 KB silently corrupts
 # .data/.bss on overflow.  Raise the bFLT stack for the network-facing daemons.
 # 32 KB (same as micropython) keeps three Dropbear children within the RAM budget.
-FLTHDR="${HOST_DIR:+${HOST_DIR}/bin/flthdr}"
+FLTHDR=""
+for c in "${HOST_DIR:-/nonexistent}"/bin/*-flthdr; do
+	[ -x "$c" ] && FLTHDR=$c && break
+done
 if [ -n "${FLTHDR}" ] && [ -x "${FLTHDR}" ]; then
 	for bin in usr/sbin/dropbear usr/bin/dbclient usr/sbin/wpa_supplicant usr/sbin/iw; do
 		if [ -f "${TARGET_DIR}/${bin}" ]; then
@@ -88,13 +91,9 @@ else
 fi
 
 # Build identification (#22): which commit produced this rootfs.
-SRC_DIR=$(cd "$(dirname "$0")" && pwd)
-GIT_REV=$(git -C "${SRC_DIR}" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
-if [ -n "$(git -C "${SRC_DIR}" status --porcelain 2>/dev/null)" ]; then
-	GIT_DIRTY=1
-else
-	GIT_DIRTY=0
-fi
+# build-m1.sh exports these from the real checkout; the staged copy is not a git tree.
+GIT_REV=${ES_GIT_REV:-unknown}
+GIT_DIRTY=${ES_GIT_DIRTY:-0}
 mkdir -p "${TARGET_DIR}/etc"
 {
 	echo "git=${GIT_REV}"
