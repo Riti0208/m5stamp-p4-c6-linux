@@ -85,3 +85,18 @@ if [ -n "${FLTHDR}" ] && [ -x "${FLTHDR}" ]; then
 else
 	echo "M3-lab: flthdr not found (HOST_DIR unset); bFLT stack sizes left at default" >&2
 fi
+
+# Build identification (#22): which commit produced this rootfs.
+SRC_DIR=$(cd "$(dirname "$0")" && pwd)
+GIT_REV=$(git -C "${SRC_DIR}" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+if [ -n "$(git -C "${SRC_DIR}" status --porcelain 2>/dev/null)" ]; then
+	GIT_DIRTY=1
+else
+	GIT_DIRTY=0
+fi
+mkdir -p "${TARGET_DIR}/etc"
+{
+	echo "git=${GIT_REV}"
+	echo "dirty=${GIT_DIRTY}"
+	echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+} > "${TARGET_DIR}/etc/easystick-release"
