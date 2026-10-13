@@ -37,3 +37,37 @@ chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-bootsync"
 chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-usb-lun"
 chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-update-status"
 chmod 0644 "${TARGET_DIR}/etc/inetd.conf"
+
+# BusyBox applet reduction (busybox.fragment) removed start-stop-daemon, ntpd
+# and hwclock.  Init scripts that depend on them can only print "applet not
+# found" and FAIL, and S01seedrng runs before the /var/lib overlay exists
+# (read-only rootfs).  Drop them from the lab image.
+rm -f "${TARGET_DIR}/etc/init.d/S01syslogd" \
+	"${TARGET_DIR}/etc/init.d/S01seedrng" \
+	"${TARGET_DIR}/etc/init.d/S41timesync"
+
+# Remove applet symlinks whose applet is not built into this BusyBox, so users
+# get "not found" from the shell instead of "applet not found".
+for applet in \
+	base32 dnsdomainname link nuke resume setpriv setserial stty zcat \
+	freeramdisk hwclock ifdown ifup ip ipaddr iplink iproute mkdosfs mke2fs \
+	start-stop-daemon ascii bc bzcat cksum crc32 dos2unix factor fallocate \
+	fold getfattr hexedit lsscsi lzcat lzopcat mesg nl nproc od paste \
+	setfattr sha1sum sha3sum sha512sum shred svc svok telnet tree truncate \
+	ts tsort unix2dos unlink unlzop uudecode uuencode w wget who whoami \
+	xzcat arping fsfreeze i2ctransfer mim ntpd partprobe; do
+	for dir in bin sbin usr/bin usr/sbin; do
+		link="${TARGET_DIR}/${dir}/${applet}"
+		if [ -L "${link}" ]; then
+			case "$(readlink "${link}")" in
+				*busybox) rm -f "${link}" ;;
+			esac
+		fi
+	done
+done
+
+# Lock root: an empty root password would give passwordless root as soon as a
+# getty/login is used.  SSH already rejects root (-w -g).
+if [ -f "${TARGET_DIR}/etc/shadow" ]; then
+	sed -i 's/^root:[^:]*:/root:!:/' "${TARGET_DIR}/etc/shadow"
+fi
