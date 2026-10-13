@@ -10,7 +10,7 @@ es_log() {
 start() {
 	es_log "ES_TMPFS BEGIN"
 	mkdir -p /tmp 2>/dev/null || true
-	mount -t tmpfs -o mode=1777,size=16M tmpfs /tmp 2>/dev/null || true
+	mount -t tmpfs -o mode=1777,size=4M tmpfs /tmp 2>/dev/null || true
 	es_log "ES_TMPFS OK"
 
 	# Fix devpts ptmx permissions and optimize VM memory fragmentation
@@ -126,7 +126,9 @@ EOF
 	# Start USB Mass Storage Gadget on Full-Speed DWC2 (Type-A port)
 	if [ -f /tmp/boot.img ]; then
 		es_log "ES_USB_GADGET STARTING"
-		if modprobe g_mass_storage file=/tmp/boot.img removable=1 stall=0 2>&1; then
+		USB_SERIAL=$(tr -d : < /sys/class/net/wlan0/address 2>/dev/null || true)
+		USB_SERIAL=${USB_SERIAL:-EASYSTICK0001}
+		if modprobe g_mass_storage file=/tmp/boot.img removable=1 stall=0 iSerialNumber="$USB_SERIAL" 2>&1; then
 			es_log "ES_USB_GADGET OK: g_mass_storage enabled"
 		elif modprobe g_mass_storage 2>&1; then
 			es_log "ES_USB_GADGET OK: g_mass_storage enabled (modprobe.d)"
