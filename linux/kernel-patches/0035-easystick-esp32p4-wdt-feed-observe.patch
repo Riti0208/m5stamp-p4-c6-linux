@@ -19,15 +19,18 @@
  static void esp32p4_wdt_unlock(struct esp32p4_wdt *wdt)
  {
  	writel(TIMG_WDT_WKEY_UNLOCK, wdt->base + TIMG_WDTWPROTECT);
-@@ -120,6 +125,12 @@
+@@ -120,6 +125,15 @@
  	writel(1, wdt->base + TIMG_WDTFEED);
  	esp32p4_wdt_relock(wdt);
  
-+	/* Low-rate: MWDT worker already feeds ~timeout/2; emit every feed. */
++	/* MWDT worker feeds ~timeout/2.  Emit the first 16 feeds, then only
++	 * powers of two, so a long uptime does not fill the log (#12). */
 +	es_wdt_feed_count++;
 +	es_wdt_last_feed_jiffies = jiffies;
-+	pr_info("ES_WDT WDT_FEED_COUNT=%lu last_feed_jiffies=%lu\n",
-+		es_wdt_feed_count, es_wdt_last_feed_jiffies);
++	if (es_wdt_feed_count <= 16 ||
++	    !(es_wdt_feed_count & (es_wdt_feed_count - 1)))
++		pr_info("ES_WDT WDT_FEED_COUNT=%lu last_feed_jiffies=%lu\n",
++			es_wdt_feed_count, es_wdt_last_feed_jiffies);
 +
  	return 0;
  }

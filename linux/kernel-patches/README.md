@@ -27,7 +27,8 @@ DTS in `../dts/` already selects `IRQ_TYPE_LEVEL_HIGH`.
 
 `0035-easystick-esp32p4-wdt-feed-observe.patch` is m3-lab-only observe
 telemetry on `esp32p4_wdt_ping`: it prints `ES_WDT WDT_FEED_COUNT` and
-`last_feed_jiffies` without changing timeout, stage policy, or feed rate.
+`last_feed_jiffies` without changing timeout, stage policy, or feed rate. It prints the first 16 feeds and then only
+power-of-two counts, so a long uptime does not fill the kernel log (#12).
 
 `0036-easystick-tcp22-bidirectional-ledger.patch` is m3-lab-only observe
 telemetry for TCP port 22 (`ES_TCP` markers on sendmsg/push/write_xmit,
