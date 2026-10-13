@@ -96,6 +96,50 @@ else
 	echo "M3-lab: flthdr not found (HOST_DIR unset); bFLT stack sizes left at default" >&2
 fi
 
+# Boot FAT template (#8, #22): the USB drive image used on first boot and as
+# the flashed boot.img.  Generate it here from text so a clean checkout (CI)
+# has it and its hash is reproducible.  S05easystick-tmpfs fills in the rest
+# (cmdline.txt reference, credentials.txt) on first boot.
+make_boot_template() {
+	out="${TARGET_DIR}/etc/easystick/boot-template.img"
+	wpa="${TARGET_DIR}/etc/easystick/wpa_supplicant.conf"
+	[ -f "${wpa}" ] || { echo "M3-lab: ${wpa} missing" >&2; exit 1; }
+	mkfs=$(command -v mkfs.vfat || command -v mkfs.fat || echo /sbin/mkfs.vfat)
+	stage=$(mktemp -d)
+	cat > "${stage}/config.txt" <<'EOF'
+# EasyStick Stamp-P4 Boot & Hardware Configuration
+# Device: M5Stamp ESP32-P4 + C6 SDIO (EasyStick Stamp-P4)
+# hostname is applied at boot by S40network.
+hostname=easystick
+# wifi_mode: ap or sta.  Leave unset to auto-detect from mode=2 in wpa_supplicant.conf.
+wifi_mode=ap
+# wifi_ssid/wifi_psk replace wpa_supplicant.conf (station, or SoftAP with wifi_mode=ap).
+#wifi_ssid=MyRouter
+#wifi_psk=MyPassphrase
+# Keys only over SSH; needs an authorized_keys file on this drive.
+#ssh_password_auth=no
+# Put an empty file named factory-reset on this drive and reboot to restore
+# these defaults and generate new credentials.
+EOF
+	cp "${wpa}" "${stage}/wpa_supplicant.conf"
+	rm -f "${out}"
+	"${mkfs}" -C -F 12 -r 64 -n EASYSTICK --invariant "${out}" 256 >/dev/null
+	# FAT cannot store dates before 1980.
+	epoch=${SOURCE_DATE_EPOCH:-315532800}
+	[ "${epoch}" -ge 315532800 ] || epoch=315532800
+	for f in "${stage}"/*; do
+		touch -d "@${epoch}" "${f}"
+		MTOOLS_SKIP_CHECK=1 mcopy -m -i "${out}" "${f}" ::/
+	done
+	rm -rf "${stage}"
+	chmod 0644 "${out}"
+	if [ -n "${BINARIES_DIR:-}" ]; then
+		mkdir -p "${BINARIES_DIR}"
+		cp "${out}" "${BINARIES_DIR}/boot.img"
+	fi
+}
+make_boot_template
+
 # Build identification (#22): which commit produced this rootfs.
 # build-m1.sh exports these from the real checkout; the staged copy is not a git tree.
 GIT_REV=${ES_GIT_REV:-unknown}

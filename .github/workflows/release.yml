@@ -50,7 +50,7 @@ jobs:
           VERSION=${VERSION%%-*}
           python3 linux/tools/package-release.py \
             --build-output "$RUNNER_TEMP/out" \
-            --boot-image linux/m3-lab/rootfs-overlay/etc/easystick/boot-template.img \
+            --boot-image "$RUNNER_TEMP/out/buildroot/images/boot.img" \
             --output release --version "$VERSION"
           cat release/SHA256SUMS.txt
       - name: Check hashes against hardware validation records
