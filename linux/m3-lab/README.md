@@ -10,7 +10,9 @@ less secure than the production M3 profile:
 - Wi-Fi credentials are supplied at build time through environment variables,
   never committed to the repository.
 
-Use it only on a private test network, change the password immediately, and
+Use it only on a private test network.  The password cannot be changed at
+runtime (read-only rootfs, `passwd` does not persist); change the hash in
+`users.txt` and rebuild (#30).  Replace the account with the key-only M3 profile and
 replace it with the key-only M3 profile after the console/config overlay path
 has been validated.  The lab image's `askfirst` shell is on `ttyGS1`, so the
 module USB-C/COM10 path is usable during bring-up; UART0 remains the recovery

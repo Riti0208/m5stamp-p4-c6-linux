@@ -1,4 +1,6 @@
 # username uid group gid password home shell groups comment
 # Deliberate M5Stack first-boot account for the image.
-# Change this password immediately after the first successful login.
+# The root filesystem is a read-only squashfs, so `passwd` cannot persist a
+# change at runtime (#30).  To change this password, replace the hash below
+# (generate with `mkpasswd -m sha-512`) and rebuild the image.
 m5 1000 m5 1000 $1$easystic$5DMG1YSbpJRAnz9BN0dYK. /home/m5 /bin/sh - M5Stack initial user
