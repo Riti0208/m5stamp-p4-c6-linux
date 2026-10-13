@@ -196,6 +196,17 @@ The system boots by default into **SoftAP mode** (per-device SSID `m5-XXXX` and 
 
 However, you can dynamically connect the Stamp-P4 to your existing Wi-Fi network (Station mode), or customize the SoftAP parameters, **directly from the Linux terminal without re-flashing or re-building!**
 
+### 0. The simple way: `config.txt` on the USB drive
+
+Add these lines to `config.txt` on the USB drive and use the host's safe-eject action:
+
+```ini
+wifi_ssid=YOUR_WIFI_SSID
+wifi_psk=YOUR_WIFI_PASSWORD
+```
+
+The board then joins that network as a station (leave `wifi_psk` out for an open network). With `wifi_mode=ap` the same two lines define the SoftAP instead (`channel=` picks the channel). When set, these lines take precedence over `wpa_supplicant.conf`. Invalid values (PSK not 8-63 characters, SSID over 32 bytes, `"` or `\` in either) are reported on the serial console as `M3-lab: CONFIG ERROR: ...` and the board keeps using `wpa_supplicant.conf`.
+
 ### 1. Connecting to an Existing Wi-Fi Network (Station / Client Mode)
 
 From the terminal (either over serial console or via SSH over default SoftAP `192.168.4.1`), run the following commands:

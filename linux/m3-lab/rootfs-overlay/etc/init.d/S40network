@@ -73,6 +73,53 @@ apply_channel() {
 	echo "M3-lab: SoftAP channel $ch ($freq MHz)"
 }
 
+# wifi_ssid= / wifi_psk= in config.txt generate the Wi-Fi config so users do not
+# have to write wpa_supplicant.conf (#25).  wifi_mode=ap makes it a SoftAP,
+# otherwise a station.  Invalid values are reported and ignored.
+config_wifi() {
+	[ -f "$CFG" ] || return 0
+	w_ssid=$(conf_get wifi_ssid "$CFG" | sed -e 's/^"//' -e 's/"[ 	]*$//')
+	[ -n "$w_ssid" ] || return 0
+	w_psk=$(conf_get wifi_psk "$CFG" | sed -e 's/^"//' -e 's/"[ 	]*$//')
+	w_mode=$(conf_get wifi_mode "$CFG" | tr -d ' ')
+	case "$w_ssid$w_psk" in
+		*'"'*|*'\'*)
+			echo "M3-lab: CONFIG ERROR: wifi_ssid/wifi_psk must not contain \" or \\; using $CONF"
+			return 0 ;;
+	esac
+	if [ "${#w_ssid}" -gt 32 ]; then
+		echo "M3-lab: CONFIG ERROR: wifi_ssid is longer than 32 bytes; using $CONF"
+		return 0
+	fi
+	if [ -n "$w_psk" ] && { [ "${#w_psk}" -lt 8 ] || [ "${#w_psk}" -gt 63 ]; }; then
+		echo "M3-lab: CONFIG ERROR: wifi_psk must be 8-63 characters; using $CONF"
+		return 0
+	fi
+	if [ "$w_mode" = "ap" ] && [ -z "$w_psk" ]; then
+		echo "M3-lab: CONFIG ERROR: wifi_mode=ap needs wifi_psk; using $CONF"
+		return 0
+	fi
+	{
+		echo "update_config=0"
+		echo "ap_scan=1"
+		echo "network={"
+		printf '\tssid="%s"\n' "$w_ssid"
+		if [ "$w_mode" = "ap" ]; then
+			printf '\tmode=2\n\tfrequency=2437\n\tkey_mgmt=WPA-PSK\n\tproto=RSN\n'
+			printf '\tpairwise=CCMP\n\tgroup=CCMP\n'
+		elif [ -n "$w_psk" ]; then
+			printf '\tscan_ssid=1\n\tkey_mgmt=WPA-PSK\n'
+		else
+			printf '\tscan_ssid=1\n\tkey_mgmt=NONE\n'
+		fi
+		[ -n "$w_psk" ] && printf '\tpsk="%s"\n' "$w_psk"
+		echo "}"
+	} > /run/wpa_cfg.conf
+	chmod 600 /run/wpa_cfg.conf
+	CONF=/run/wpa_cfg.conf
+	echo "M3-lab: Wi-Fi config generated from config.txt (ssid=$w_ssid mode=${w_mode:-sta})"
+}
+
 start() {
 	# Cmdline keeps loglevel=8 for bring-up captures, but console traffic at
 	# that level still starves SDIO/ARP on this NOMMU target even after the
@@ -139,6 +186,7 @@ start() {
 	elif [ -f /tmp/config.txt ]; then
 		CFG=/tmp/config.txt
 	fi
+	config_wifi || true
 
 	is_ap=0
 	if [ -f "$CFG" ]; then
