@@ -130,3 +130,9 @@ CONFIG_FEATURE_VI_ASK_TERMINAL=y
 # CONFIG_DNSDOMAINNAME is not set
 # CONFIG_MESG is not set
 # CONFIG_MIM is not set
+
+# #23: on NOMMU every external command is a vfork+exec that re-copies the
+# whole 450 KB bFLT image.  Run NOFORK applets (sleep, echo, test, ...) inside
+# the shell itself so periodic loops stop allocating a fresh image per tick.
+CONFIG_FEATURE_SH_NOFORK=y
+CONFIG_FEATURE_PREFER_APPLETS=y
