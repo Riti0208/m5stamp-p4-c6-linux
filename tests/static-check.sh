@@ -22,7 +22,7 @@ for f in $scripts; do
 	[ "${f##*/}" = post-build.sh ] && continue
 	for cmd in $missing; do
 		# Match the command in command position, ignoring comments.
-		if grep -v '^[[:space:]]*#' "$f" | grep -Eq "(^|[;&|(\`]|\$\()[[:space:]]*$cmd([[:space:]]|\$)"; then
+		if grep -v '^[[:space:]]*#' "$f" | grep -Eq "(^|[^A-Za-z0-9_./-])$cmd([[:space:];|&)]|$)"; then
 			echo "FAIL missing applet '$cmd' used in $f"
 			fail=1
 		fi
