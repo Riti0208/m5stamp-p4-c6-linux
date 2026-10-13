@@ -1,0 +1,73 @@
+# Builds the release from the tagged commit, refuses assets that were not the
+# ones validated on hardware, and uploads them with the debug bundle (#8, #22).
+# Run manually (workflow_dispatch) to build and print the hashes for validation
+# without publishing anything.
+name: release
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version for a build-only run, e.g. v0.2.2'
+        required: true
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          df -h /
+      - name: Build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bison flex bc cpio rsync unzip file cmake ninja-build device-tree-compiler \
+            libssl-dev libncurses-dev libelf-dev libgmp-dev libmpc-dev squashfs-tools \
+            dosfstools mtools python3-venv python3-pip
+      - name: Verify pinned sources
+        run: python3 tools/verify-source-lock.py
+      - name: Install ESP-IDF toolchain
+        run: |
+          export IDF_TOOLS_PATH=$RUNNER_TEMP/idf-tools
+          (cd vendor/esp-idf && ./install.sh esp32p4)
+      - name: Build firmware (boot-shim, kernel, rootfs)
+        run: |
+          export IDF_TOOLS_PATH=$RUNNER_TEMP/idf-tools IDF_PATH=$PWD/vendor/esp-idf
+          . "$IDF_PATH/export.sh"
+          bash linux/build-c68.sh --vendor "$RUNNER_TEMP/out" --profile m3-lab
+      - name: Package
+        run: |
+          VERSION=${{ github.event.inputs.version || github.ref_name }}
+          VERSION=${VERSION%%-*}
+          python3 linux/tools/package-release.py \
+            --build-output "$RUNNER_TEMP/out" \
+            --boot-image linux/m3-lab/rootfs-overlay/etc/easystick/boot-template.img \
+            --output release --version "$VERSION"
+          cat release/SHA256SUMS.txt
+      - name: Check hashes against hardware validation records
+        if: github.event_name == 'push'
+        run: |
+          python3 linux/tools/check-validated-hashes.py \
+            --sums release/SHA256SUMS.txt \
+            --validation linux/tests/*hardware-validation-*.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release/*
+          if-no-files-found: error
+      - name: Publish release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" --verify-tag --generate-notes \
+            release/*.gz release/*.zip release/*-debug.tar.xz release/SHA256SUMS.txt
