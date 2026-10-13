@@ -249,6 +249,8 @@ ssh m5@<YOUR_NEW_IP>
 # Password: password= from credentials.txt
 ```
 
+The board also answers mDNS for `<hostname>.local` (`easystick.local` unless `hostname=` in `config.txt` says otherwise), so `ssh m5@easystick.local` works from hosts with mDNS (macOS, most Linux desktops, Windows 10+). Only the name is published; there is no service discovery.
+
 *(Note: To test link state manually, run `iw dev wlan0 link` to view connection status, SSID, signal level, and BSSID).*
 
 ### 2. Customizing the SoftAP (Change SSID / Passphrase)

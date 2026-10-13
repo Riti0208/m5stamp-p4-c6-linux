@@ -23,3 +23,5 @@ CONFIG_NLS_ISO8859_1=y
 CONFIG_TMPFS_XATTR=y
 # Real tmpfs so size= is honoured; with SHMEM=n /tmp is an unbounded ramfs.
 CONFIG_SHMEM=y
+# Multicast receive for the mDNS responder (#25).
+CONFIG_IP_MULTICAST=y
