@@ -84,6 +84,11 @@ if [ -n "${FLTHDR}" ] && [ -x "${FLTHDR}" ]; then
 	for bin in usr/sbin/dropbear usr/bin/dbclient usr/sbin/wpa_supplicant usr/sbin/iw; do
 		if [ -f "${TARGET_DIR}/${bin}" ]; then
 			"${FLTHDR}" -s 32768 "${TARGET_DIR}/${bin}"
+			# Fail the build if the stack did not stick (#28).
+			"${FLTHDR}" "${TARGET_DIR}/${bin}" | grep -q "Stack Size:[[:space:]]*0x8000" || {
+				echo "M3-lab: bFLT stack check failed for ${bin}" >&2
+				exit 1
+			}
 		fi
 	done
 else
