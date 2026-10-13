@@ -162,6 +162,9 @@ make_boot_template
 GIT_REV=${ES_GIT_REV:-unknown}
 GIT_DIRTY=${ES_GIT_DIRTY:-0}
 mkdir -p "${TARGET_DIR}/etc"
+# S05 mounts the FAT boot image here; the squashfs is read-only at runtime,
+# so the mount point must already exist in the image.
+mkdir -p "${TARGET_DIR}/boot"
 {
 	echo "version=${ES_VERSION:-unknown}"
 	echo "git=${GIT_REV}"
