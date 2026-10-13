@@ -127,6 +127,8 @@ wifi_mode=ap
 # wifi_ssid/wifi_psk replace wpa_supplicant.conf (station, or SoftAP with wifi_mode=ap).
 #wifi_ssid=MyRouter
 #wifi_psk=MyPassphrase
+# Optional management frame protection (802.11w) with wifi_psk.
+#wifi_pmf=1
 # Regulatory domain (two-letter country code); unset keeps the world domain.
 #country=JP
 # Keys only over SSH; needs an authorized_keys file on this drive.

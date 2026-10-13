@@ -162,25 +162,34 @@ config_wifi() {
 		echo "M3-lab: CONFIG ERROR: wifi_mode=ap needs wifi_psk; using $CONF"
 		return 0
 	fi
+	# wifi_pmf=1: optional management frame protection (802.11w, #32).  Peers
+	# without PMF still connect.  Opt-in until tested with the C6 firmware.
+	w_akm=WPA-PSK
+	w_pmf=""
+	if [ "$(conf_get wifi_pmf "$CFG" | tr -d ' ')" = "1" ] && [ -n "$w_psk" ]; then
+		w_akm="WPA-PSK WPA-PSK-SHA256"
+		w_pmf=1
+	fi
 	{
 		echo "update_config=0"
 		echo "ap_scan=1"
 		echo "network={"
 		printf '\tssid="%s"\n' "$w_ssid"
 		if [ "$w_mode" = "ap" ]; then
-			printf '\tmode=2\n\tfrequency=2437\n\tkey_mgmt=WPA-PSK\n\tproto=RSN\n'
+			printf '\tmode=2\n\tfrequency=2437\n\tkey_mgmt=%s\n\tproto=RSN\n' "$w_akm"
 			printf '\tpairwise=CCMP\n\tgroup=CCMP\n'
 		elif [ -n "$w_psk" ]; then
-			printf '\tscan_ssid=1\n\tkey_mgmt=WPA-PSK\n'
+			printf '\tscan_ssid=1\n\tkey_mgmt=%s\n' "$w_akm"
 		else
 			printf '\tscan_ssid=1\n\tkey_mgmt=NONE\n'
 		fi
+		[ -n "$w_pmf" ] && printf '\tieee80211w=1\n'
 		[ -n "$w_psk" ] && printf '\tpsk="%s"\n' "$w_psk"
 		echo "}"
 	} > /run/wpa_cfg.conf
 	chmod 600 /run/wpa_cfg.conf
 	CONF=/run/wpa_cfg.conf
-	echo "M3-lab: Wi-Fi config generated from config.txt (ssid=$w_ssid mode=${w_mode:-sta})"
+	echo "M3-lab: Wi-Fi config generated from config.txt (ssid=$w_ssid mode=${w_mode:-sta}${w_pmf:+ pmf=optional})"
 }
 
 # No RTC: set the clock once from NTP after a station lease (#25).  -q exits

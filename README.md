@@ -50,8 +50,8 @@ Linux / macOS serial examples, how to open the console without resetting the boa
 
 - **C6 firmware**: Linux expects the ESP32-C6 to run ESP-Hosted NG 1.0.6 (the driver logs `ESP-Hosted Version: NG-1.0.6.0.1`). The release images flash the P4 only; a C6 running another version may fail to attach over SDIO. Check the version in the boot log.
 - **Secure Boot and flash encryption are disabled.** Physical access allows reading the flash (including Wi-Fi credentials in the boot FAT) and writing arbitrary firmware. See [SECURITY.md](SECURITY.md).
-- **Wi-Fi regulatory domain**: no `country=` is set and `regulatory.db` is not shipped, so the world regulatory domain applies. Set `country=` in `wpa_supplicant.conf` for your region.
-- **Factory reset**: not implemented yet; recover through the serial console or by rewriting the USB drive files.
+- **Wi-Fi regulatory domain**: no `country=` is set by default, so the world regulatory domain applies. Set `country=` in `config.txt` for your region.
+- **Wi-Fi security**: WPA2-PSK only. Protected management frames are opt-in (`wifi_pmf=1`) and not yet tested with the C6 firmware; WPA3-SAE is not built.
 
 ## Default Credentials & Connection
 
@@ -207,6 +207,8 @@ wifi_psk=YOUR_WIFI_PASSWORD
 ```
 
 The board then joins that network as a station (leave `wifi_psk` out for an open network). With `wifi_mode=ap` the same two lines define the SoftAP instead (`channel=` picks the channel). When set, these lines take precedence over `wpa_supplicant.conf`. Invalid values (PSK not 8-63 characters, SSID over 32 bytes, `"` or `\` in either) are reported on the serial console as `M3-lab: CONFIG ERROR: ...` and the board keeps using `wpa_supplicant.conf`.
+
+`wifi_pmf=1` adds optional protected management frames (802.11w, `ieee80211w=1` with `WPA-PSK WPA-PSK-SHA256`) to the generated config, for both station and SoftAP. Peers without PMF still connect. It has not been tested with the C6 firmware yet; if the board stops joining, remove the line.
 
 `country=JP` (any two-letter code) in `config.txt` sets the Wi-Fi regulatory domain (`M3-lab: regulatory domain JP` on the console); `country=` inside `wpa_supplicant.conf` works too. Without it the board uses the restrictive world domain. Set it to the country where the board is used.
 

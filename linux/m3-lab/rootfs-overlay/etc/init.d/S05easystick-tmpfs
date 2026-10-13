@@ -264,6 +264,8 @@ hostname=easystick
 # wifi_ssid/wifi_psk replace wpa_supplicant.conf (station, or SoftAP with wifi_mode=ap).
 #wifi_ssid=MyRouter
 #wifi_psk=MyPassphrase
+# Optional management frame protection (802.11w) with wifi_psk.
+#wifi_pmf=1
 # Keys only over SSH; needs an authorized_keys file on this drive.
 #ssh_password_auth=no
 # maxcpus is fixed in the DTB (maxcpus=1); this file does not change the CPU count.
