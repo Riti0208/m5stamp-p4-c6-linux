@@ -8,7 +8,28 @@ es_hk() {
 	printf '%s\n' "$1"
 }
 
+# BusyBox in this image has no pidof; scan /proc instead.
+inetd_running() {
+	for c in /proc/[0-9]*/comm; do
+		[ "$(cat "$c" 2>/dev/null)" = "inetd" ] && return 0
+	done
+	return 1
+}
+
+LOCK=/tmp/.es-ssh.lock
+
 start() {
+	# start and the backgrounded restart from S40network may overlap; serialize.
+	if ! mkdir "$LOCK" 2>/dev/null; then
+		return 0
+	fi
+	rc=0
+	start_locked || rc=$?
+	rmdir "$LOCK" 2>/dev/null || true
+	return $rc
+}
+
+start_locked() {
 	if [ ! -x /usr/sbin/inetd ]; then
 		es_hk "ES_HOSTKEY INETD_MISSING"
 		echo "M3-lab: inetd is missing; SSH remains disabled"
@@ -22,12 +43,15 @@ start() {
 	if [ ! -s "$KEY" ]; then
 		# BusyBox wc may print leading spaces; strip them.
 		es_hk "ES_HOSTKEY GEN_BEGIN"
-		rm -f "$KEY"
 		umask 077
-		if ! dropbearkey -t ed25519 -f "$KEY" >/dev/null 2>&1; then
+		TMPKEY="$KEY.$"
+		rm -f "$TMPKEY"
+		if ! dropbearkey -t ed25519 -f "$TMPKEY" >/dev/null 2>&1; then
+			rm -f "$TMPKEY"
 			es_hk "ES_HOSTKEY GEN_FAIL"
 			return 1
 		fi
+		mv -f "$TMPKEY" "$KEY"
 		es_hk "ES_HOSTKEY GEN_OK"
 
 		if [ ! -s "$KEY" ]; then
@@ -45,7 +69,7 @@ start() {
 	# inetd listens on 0.0.0.0:22.  Do not gate on a network interface name:
 	# this port's STA iface has been wlan0, upstream esp-hosted may use
 	# ethsta0, and either may appear after this script runs.
-	if ! pidof inetd >/dev/null 2>&1; then
+	if ! inetd_running; then
 		es_hk "ES_HOSTKEY INETD_START"
 		printf '%s\n' "M3-lab: starting password-enabled Dropbear on TCP/22"
 		/usr/sbin/inetd -f /etc/inetd.conf &
@@ -56,7 +80,7 @@ start() {
 }
 
 restart() {
-	if ! pidof inetd >/dev/null 2>&1; then
+	if ! inetd_running; then
 		start
 	fi
 }
