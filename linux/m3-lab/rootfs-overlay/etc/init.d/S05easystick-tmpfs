@@ -18,6 +18,17 @@ start() {
 	echo 4096 > /proc/sys/vm/min_free_kbytes 2>/dev/null || true
 	echo 500 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null || true
 
+	# Hardening: root daemons write fixed names in world-writable /tmp, so make
+	# the kernel refuse symlink/hardlink/regular-file tricks there.  NOMMU has
+	# no memory isolation, so an Oops must reset the board (panic=5) instead of
+	# running on with corrupted memory.
+	echo 1 > /proc/sys/fs/protected_symlinks 2>/dev/null || true
+	echo 1 > /proc/sys/fs/protected_hardlinks 2>/dev/null || true
+	echo 2 > /proc/sys/fs/protected_regular 2>/dev/null || true
+	echo 1 > /proc/sys/kernel/dmesg_restrict 2>/dev/null || true
+	echo 1 > /proc/sys/kernel/kptr_restrict 2>/dev/null || true
+	echo 1 > /proc/sys/kernel/panic_on_oops 2>/dev/null || true
+
 	# OverlayFS for writable /home, /root, /var/lib
 	es_log "ES_OVERLAY BEGIN"
 	for d in /home /root /var/lib; do
@@ -79,7 +90,7 @@ start() {
 	# Initialize /boot files if not present
 	if [ -d /boot ]; then
 		if [ ! -f /boot/cmdline.txt ] && [ -r /proc/cmdline ]; then
-			cat /proc/cmdline > /boot/cmdline.txt 2>/dev/null || true
+			{ echo "# Reference only: a copy of /proc/cmdline. Editing this file has no effect."; cat /proc/cmdline; } > /boot/cmdline.txt 2>/dev/null || true
 		fi
 		if [ ! -f /boot/wpa_supplicant.conf ] && [ -r /etc/easystick/wpa_supplicant.conf ]; then
 			cp -f /etc/easystick/wpa_supplicant.conf /boot/wpa_supplicant.conf 2>/dev/null || true
@@ -88,18 +99,22 @@ start() {
 			cat << 'EOF' > /boot/config.txt 2>/dev/null || true
 # EasyStick Stamp-P4 Boot & Hardware Configuration
 # Device: M5Stamp ESP32-P4 + C6 SDIO (EasyStick Stamp-P4)
+# hostname is applied at boot by S40network.
 hostname=easystick
-wifi_mode=ap
-maxcpus=1
+# wifi_mode: ap or sta.  Leave unset to auto-detect from mode=2 in wpa_supplicant.conf.
+#wifi_mode=ap
+# maxcpus is fixed in the DTB (maxcpus=1); this file does not change the CPU count.
 EOF
 		fi
 		# Cache /boot configuration files to /tmp so S40network can access them
 		# even after /boot is unmounted for USB Mass Storage
 		if [ -f /boot/wpa_supplicant.conf ]; then
 			cp -f /boot/wpa_supplicant.conf /tmp/wpa_supplicant.conf 2>/dev/null || true
+			chmod 600 /tmp/wpa_supplicant.conf 2>/dev/null || true
 		fi
 		if [ -f /boot/config.txt ]; then
 			cp -f /boot/config.txt /tmp/config.txt 2>/dev/null || true
+			chmod 600 /tmp/config.txt 2>/dev/null || true
 		fi
 		# Flush and unmount /boot before exposing backing file to USB host
 		# to prevent concurrent filesystem cache corruption between Linux and Windows
