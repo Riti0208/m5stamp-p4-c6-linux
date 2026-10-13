@@ -509,6 +509,22 @@ b242c213fa404d793fb8efabe7c85ec06fc54a654c9ca3297d287413d321ce48  partition-tabl
 
 ---
 
+## Third-party licenses
+
+The images contain third-party software under its own licenses. Corresponding source for GPL components is built from the revisions pinned in `versions.lock.json` plus the patches and configs under `linux/`.
+
+| Component | License |
+|---|---|
+| Linux 6.18.35 + patches, `esp32_sdio.ko` | GPL-2.0 |
+| BusyBox | GPL-2.0 |
+| uClibc-ng | LGPL-2.1 |
+| Dropbear | MIT |
+| wpa_supplicant | BSD-3-Clause |
+| ESP-IDF (boot-shim) | Apache-2.0 |
+| ESP-Hosted NG | to be confirmed |
+
+A project `LICENSE` file and a Buildroot `make legal-info` bundle for releases are still to be added (#31).
+
 ## Acknowledgments & References
 
 - [why2025-linux](https://github.com/mrbreaker/why2025-linux) by @mrbreaker for initial ESP32-P4 NOMMU bring-up reference.
