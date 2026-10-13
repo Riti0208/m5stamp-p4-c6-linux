@@ -41,15 +41,61 @@ run_dhcp() {
 	return 1
 }
 
+# wpa_supplicant runs in the foreground under a respawn loop, like udhcpd: if
+# it dies the loop restarts it.  The loop reads the config path from
+# $WPA_CONF_RUN on each start, so the fallback below also survives a respawn.
+WPA_SUP=/run/.es-wpa-sup
+WPA_PID=/run/.es-wpa-pid
+WPA_CONF_RUN=/run/.es-wpa-conf
+stop_wpa() {
+	if [ -f "$WPA_SUP" ]; then
+		kill "$(cat "$WPA_SUP")" 2>/dev/null || true
+		rm -f "$WPA_SUP"
+	fi
+	if wpa_alive; then
+		kill "$p" 2>/dev/null || true
+	fi
+	rm -f "$WPA_PID"
+	killall wpa_supplicant 2>/dev/null || true
+}
+
+# True while the current wpa_supplicant child is alive (kill -0 is a builtin).
+wpa_alive() {
+	p=""
+	read -r p 2>/dev/null < "$WPA_PID" || return 1
+	[ -n "$p" ] && kill -0 "$p" 2>/dev/null
+}
+
+# Wait 3 s: a rejected config makes wpa_supplicant exit at once.
+wpa_settled() {
+	sleep 3
+	wpa_alive
+}
+
 # Start wpa_supplicant with $CONF; if it rejects the file (short psk, syntax
 # error, BOM...), fall back to the built-in default so the board stays reachable.
 start_wpa() {
-	if wpa_supplicant -B -q -i wlan0 -c "$CONF"; then
-		return 0
-	fi
+	stop_wpa
+	echo "$CONF" > "$WPA_CONF_RUN"
+	(
+		while :; do
+			c=""
+			read -r c 2>/dev/null < "$WPA_CONF_RUN" || true
+			wpa_supplicant -q -i wlan0 -c "${c:-/etc/easystick/wpa_supplicant.conf}" &
+			echo $! > "$WPA_PID"
+			wait $!
+			rm -f "$WPA_PID" /var/run/wpa_supplicant/wlan0
+			sleep 5
+		done
+	) >/dev/null 2>&1 &
+	echo $! > "$WPA_SUP"
+	wpa_settled && return 0
 	echo "M3-lab: wpa_supplicant failed with $CONF; falling back to /etc/easystick/wpa_supplicant.conf"
 	CONF=/etc/easystick/wpa_supplicant.conf
-	wpa_supplicant -B -q -i wlan0 -c "$CONF" || echo "M3-lab: wpa_supplicant fallback failed"
+	echo "$CONF" > "$WPA_CONF_RUN"
+	# The loop picks up the new path on its next start (at most 5 s).
+	sleep 6
+	wpa_alive || echo "M3-lab: wpa_supplicant fallback failed"
 }
 
 # channel= (1-13) in config.txt overrides the SoftAP frequency (#24).  The
@@ -309,14 +355,16 @@ case "${1:-start}" in
 	start) start ;;
 	stop)
 		stop_udhcpd
-		killall wpa_supplicant udhcpc 2>/dev/null || true
+		stop_wpa
+		killall udhcpc 2>/dev/null || true
 		ifconfig wlan0 down 2>/dev/null || true
 		rm -rf /var/run/wpa_supplicant* 2>/dev/null || true
 		[ -x /usr/sbin/easystick-update-status ] && /usr/sbin/easystick-update-status "STOPPED" "none" "none" "none" "none" "none" &
 		;;
 	reload|restart)
 		stop_udhcpd
-		killall wpa_supplicant udhcpc 2>/dev/null || true
+		stop_wpa
+		killall udhcpc 2>/dev/null || true
 		ifconfig wlan0 down 2>/dev/null || true
 		rm -rf /var/run/wpa_supplicant* 2>/dev/null || true
 		sleep 1
