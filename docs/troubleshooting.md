@@ -70,6 +70,15 @@ reboot regenerates the credentials; reboot once after first boot to save them.
 **The USB drive does not appear.** Look for `ES_USB_GADGET OK` on the console.
 Configuration edits are applied only after the host's safe-eject action.
 
+**Need more kernel output.** Add `debug=1` to `config.txt`, safe-eject and
+reboot: S40network then leaves all kernel messages on the console instead of
+lowering it to warnings. Expect slower Wi-Fi/SSH while it is on, and remove it
+afterwards. `logread` shows the syslog ring buffer and `easystick-info` a status
+summary.
+
+**Settings broke Wi-Fi or SSH.** Put an empty `factory-reset` file on the USB
+drive and reboot to restore the defaults (see the README).
+
 **Boot loop / `CRASH_CAPSULE`.** The boot-shim prints
 `CRASH_CAPSULE VALID seq=... reason=... epc=... ra=...` and stores the record
 in the `crashlog` partition. `reason=1` is a watchdog reset. Resolve `epc` and

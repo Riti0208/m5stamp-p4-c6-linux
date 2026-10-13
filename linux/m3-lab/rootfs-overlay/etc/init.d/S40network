@@ -136,7 +136,14 @@ start() {
 	# that level still starves SDIO/ARP on this NOMMU target even after the
 	# quiet ESP-Hosted patches (0024/0025).  Drop console printk now so the
 	# lab SSH shot does not depend on a manual `dmesg -n 1` over ttyGS1.
-	dmesg -n 4 2>/dev/null || true
+	# debug=1 in config.txt raises the console to KERN_DEBUG for bring-up
+	# captures (#26); expect slower Wi-Fi/SSH while it is on.
+	if [ "$(conf_get debug /tmp/config.txt | tr -d ' ')" = "1" ]; then
+		echo "M3-lab: debug=1: console loglevel 8 (all kernel messages)"
+		dmesg -n 8 2>/dev/null || true
+	else
+		dmesg -n 4 2>/dev/null || true
+	fi
 
 	WANT_MHZ="${ES_SDIO_MHZ:-}"
 	if [ -z "$WANT_MHZ" ] && [ -r /etc/easystick/sdio-clock-mhz ]; then
