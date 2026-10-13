@@ -33,6 +33,18 @@ start() {
 	echo 1 > /proc/sys/kernel/dmesg_restrict 2>/dev/null || true
 	echo 1 > /proc/sys/kernel/kptr_restrict 2>/dev/null || true
 	echo 1 > /proc/sys/kernel/panic_on_oops 2>/dev/null || true
+
+	# Clock floor: with no RTC the time starts at 1970.  Use the build time so
+	# certificates and file times are at least plausible until NTP exists.
+	if [ "$(date +%Y)" -lt 2026 ] && [ -r /etc/easystick-release ]; then
+		bd=$(sed -n "s/^build_date=//p" /etc/easystick-release | head -n1 | tr T Z | sed "s/Z/ /;s/Z$//")
+		[ -n "$bd" ] && date -s "$bd" >/dev/null 2>&1 || true
+	fi
+
+	# Ring-buffer syslog (read with logread) when the applets are built in.
+	if command -v syslogd >/dev/null 2>&1; then
+		syslogd -C16 2>/dev/null || true
+	fi
 	echo 1 > /proc/sys/vm/oom_kill_allocating_task 2>/dev/null || true
 
 	# OverlayFS for writable /home, /root, /var/lib

@@ -36,6 +36,7 @@ chmod 0755 "${TARGET_DIR}/etc/init.d/S85easystick-ssh"
 chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-bootsync"
 chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-usb-lun"
 chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-update-status"
+chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-info"
 chmod 0644 "${TARGET_DIR}/etc/inetd.conf"
 
 # BusyBox applet reduction (busybox.fragment) removed start-stop-daemon, ntpd
