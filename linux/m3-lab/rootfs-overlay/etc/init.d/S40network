@@ -131,6 +131,17 @@ sync_time() {
 		echo "M3-lab: clock set from NTP: $(date)" ) &
 }
 
+# udhcpd runs in the foreground under a respawn loop (#29): it comes back if
+# it dies, and -f keeps NOMMU udhcpd from re-execing itself as a daemon.
+UDHCPD_SUP=/run/.es-udhcpd-sup
+stop_udhcpd() {
+	if [ -f "$UDHCPD_SUP" ]; then
+		kill "$(cat "$UDHCPD_SUP")" 2>/dev/null || true
+		rm -f "$UDHCPD_SUP"
+	fi
+	killall udhcpd 2>/dev/null || true
+}
+
 start() {
 	# Cmdline keeps loglevel=8 for bring-up captures, but console traffic at
 	# that level still starves SDIO/ARP on this NOMMU target even after the
@@ -231,7 +242,7 @@ start() {
 
 			if [ "$is_ap" -eq 1 ]; then
 				echo "M3-lab: starting SoftAP mode from $CONF"
-				killall udhcpd 2>/dev/null || true
+				stop_udhcpd
 				ifconfig wlan0 down 2>/dev/null || true
 				iw dev wlan0 set type __ap 2>/dev/null || iw dev wlan0 set type ap 2>/dev/null || true
 				ifconfig wlan0 192.168.4.1 netmask 255.255.255.0 up || true
@@ -242,7 +253,8 @@ start() {
 				if command -v udhcpd >/dev/null 2>&1; then
 					mkdir -p /tmp /var/lib/misc
 					touch /tmp/udhcpd.leases
-					udhcpd -S /etc/udhcpd.conf &
+					( while :; do udhcpd -f -S /etc/udhcpd.conf; sleep 2; done ) >/dev/null 2>&1 &
+					echo $! > "$UDHCPD_SUP"
 					echo "M3-lab: udhcpd started on wlan0 (192.168.4.1)"
 				else
 					echo "M3-lab: udhcpd not found"
@@ -296,13 +308,15 @@ start() {
 case "${1:-start}" in
 	start) start ;;
 	stop)
-		killall wpa_supplicant udhcpc udhcpd 2>/dev/null || true
+		stop_udhcpd
+		killall wpa_supplicant udhcpc 2>/dev/null || true
 		ifconfig wlan0 down 2>/dev/null || true
 		rm -rf /var/run/wpa_supplicant* 2>/dev/null || true
 		[ -x /usr/sbin/easystick-update-status ] && /usr/sbin/easystick-update-status "STOPPED" "none" "none" "none" "none" "none" &
 		;;
 	reload|restart)
-		killall wpa_supplicant udhcpc udhcpd 2>/dev/null || true
+		stop_udhcpd
+		killall wpa_supplicant udhcpc 2>/dev/null || true
 		ifconfig wlan0 down 2>/dev/null || true
 		rm -rf /var/run/wpa_supplicant* 2>/dev/null || true
 		sleep 1
