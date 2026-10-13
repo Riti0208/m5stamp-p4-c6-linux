@@ -28,6 +28,9 @@ Set EASYSTICK_WDT_INJECT=0 to skip 0059. Default (BB builds) adds
 Set EASYSTICK_LAB_TOOLS=0 with --profile m3-lab to leave out the bring-up
 tools (tcpdump, MicroPython, dbclient, dropbearconvert, nc).  The default (1)
 keeps the image that the hardware validation records describe.
+Set EASYSTICK_LEGAL_INFO=1 to also run Buildroot's legal-info into
+<vendor>/buildroot/legal-info (sources, patches and license texts, #31).  It
+does not change any image.
 Set EASYSTICK_BUILDROOT_JLEVEL=1 to serialize nested Buildroot package makes.
 This is useful for BusyBox versions whose generated applet tables are not safe
 when install-noclobber is invoked in parallel.
@@ -396,6 +399,12 @@ if $network_profile; then
 	git -C "$buildroot_root" archive --format=tar HEAD | tar -x -C "$buildroot_for_make"
 	patch -p1 -d "$buildroot_for_make" \
 		<"${script_dir}/m2/buildroot-patches/package-wpa-nommu.patch"
+	# Linux 6.18's LICENSES/preferred/GPL-2.0 differs from the copy Buildroot
+	# 2025.02 hashes (COPYING and the syscall note match); without the new
+	# hash, legal-info (EASYSTICK_LEGAL_INFO=1) stops at linux-headers, whose
+	# hash file is a symlink to linux/linux.hash.
+	patch -p1 -d "$buildroot_for_make" \
+		<"${script_dir}/m2/buildroot-patches/linux-6.18-license-hash.patch"
 	rm -rf -- "$global_patch_stage"
 	mkdir -p -- "${global_patch_stage}/wpa_supplicant"
 	cp -- "${script_dir}/m2/buildroot-patches/wpa-os-unix-vfork.patch" \
@@ -2190,4 +2199,8 @@ fi
 
 profile_fail_closed_after_rootfs
 printf '%s\n' "$profile_identity" >"$profile_stamp"
+if [[ ${EASYSTICK_LEGAL_INFO:-0} == 1 ]]; then
+	rm -rf -- "${br_output}/legal-info"
+	make "${make_args[@]}" legal-info
+fi
 echo "${profile^^} Buildroot build complete: ${br_output}/images"
