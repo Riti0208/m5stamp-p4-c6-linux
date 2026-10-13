@@ -47,6 +47,13 @@ Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SS
 
 Linux / macOS serial examples, how to open the console without resetting the board, troubleshooting and flash backup / recovery are in [docs/troubleshooting.md](docs/troubleshooting.md).
 
+## C6 Firmware, Security Features & Regulatory Notes
+
+- **C6 firmware**: Linux expects the ESP32-C6 to run ESP-Hosted NG 1.0.6 (the driver logs `ESP-Hosted Version: NG-1.0.6.0.1`). The release images flash the P4 only; a C6 running another version may fail to attach over SDIO. Check the version in the boot log.
+- **Secure Boot and flash encryption are disabled.** Physical access allows reading the flash (including Wi-Fi credentials in the boot FAT) and writing arbitrary firmware. See [SECURITY.md](SECURITY.md).
+- **Wi-Fi regulatory domain**: no `country=` is set and `regulatory.db` is not shipped, so the world regulatory domain applies. Set `country=` in `wpa_supplicant.conf` for your region.
+- **Factory reset**: not implemented yet; recover through the serial console or by rewriting the USB drive files.
+
 ## Default Credentials & Connection
 
 | Service | SSID / Host | Username | Password | Notes |
