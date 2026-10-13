@@ -232,6 +232,19 @@ start() {
 		mount --bind /tmp/boot /boot 2>/dev/null || true
 	fi
 
+	# Factory reset (#32): an empty file named factory-reset on the USB drive
+	# restores the shipped template, so the code below generates new
+	# credentials and the reset image is committed at the next reboot.
+	# factory-reset.txt too: Notepad adds the extension.
+	if { [ -f /boot/factory-reset ] || [ -f /boot/factory-reset.txt ]; } &&
+		[ -f /etc/easystick/boot-template.img ]; then
+		es_log "ES_FACTORY_RESET: restoring the boot FAT template"
+		umount /boot 2>/dev/null || true
+		cp -f /etc/easystick/boot-template.img /tmp/boot.img
+		mount -t vfat -o loop,rw,sync,umask=0000 /tmp/boot.img /boot 2>/dev/null ||
+			es_log "ES_FACTORY_RESET FAIL: could not mount the template"
+	fi
+
 	# Initialize /boot files if not present
 	if [ -d /boot ]; then
 		if [ ! -f /boot/cmdline.txt ] && [ -r /proc/cmdline ]; then
