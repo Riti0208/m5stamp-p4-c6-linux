@@ -1,8 +1,8 @@
-# M5Stamp ESP32-P4 + C6 SDIO Linux (SMP Dual-Core)
+# M5Stamp ESP32-P4 + C6 SDIO Linux (SMP kernel, experimental dual-core)
 
 [![License](https://img.shields.io/badge/license-GPLv2%20%2F%20MIT%20%2F%20Apache-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-ESP32--P4%20%2B%20ESP32--C6-orange.svg)](https://m5stack.com)
-[![CPU](https://img.shields.io/badge/SMP-Dual--Core%20RV32IMAC%20%40%20400MHz-green.svg)](https://github.com/tsuyoshi-otake/m5stamp-p4-c6-linux/releases)
+[![CPU](https://img.shields.io/badge/SMP-Experimental%20Dual--Core%20RV32IMAC-yellow.svg)](https://github.com/tsuyoshi-otake/m5stamp-p4-c6-linux/releases)
 
 A reproducible, native **Dual-Core SMP** RISC-V NOMMU Linux 6.18 distribution for the **M5Stack Stamp-P4** carrier board paired with **Stamp-AddOn C6** (via 4-bit SDIO interface).
 
@@ -18,8 +18,8 @@ Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SS
 
 ## Key Features & Verified Hardware Capabilities
 
-- **SoC Target**: ESP32-P4 (Dual-Core RV32IMAC / ilp32 @ 400 MHz, 32 MiB PSRAM, 16 MiB SPI Flash).
-- **SMP Enabled**: Both CPU0 and CPU1 active (`Linux 6.18.35 #1 SMP riscv32 GNU/Linux`).
+- **SoC Target**: ESP32-P4 (Dual-Core RV32IMAC / ilp32, CPU clock 360 MHz as reported by the boot-shim, 32 MiB PSRAM, 16 MiB SPI Flash).
+- **SMP (experimental)**: The kernel is built with SMP (`Linux 6.18.35 #1 SMP riscv32 GNU/Linux`), but the shipped DTB boots with `maxcpus=1`, so only CPU0 is online (`/sys/devices/system/cpu/online` = `0`). Setting `maxcpus=2` currently hangs during userland start and ends in a watchdog reset loop (issue #5). `maxcpus` in `/boot/config.txt` is informational and is not read by anything.
 - **Wi-Fi Companion**: ESP32-C6 (M5Stack Stamp-AddOn C6) connected via high-speed 4-bit SDIO.
 - **Out-of-the-Box SoftAP**:
   - Automatically broadcasts Wi-Fi SSID: **`m5`**
