@@ -1,0 +1,15 @@
+Third-party software in this image
+
+  Linux kernel and esp32_sdio.ko (ESP-Hosted NG)   GPL-2.0-only
+  BusyBox                                          GPL-2.0-only
+  uClibc-ng                                        LGPL-2.1-or-later
+  Dropbear                                         MIT
+  wpa_supplicant, iw                               BSD-3-Clause / ISC
+  tcpdump, libpcap (lab tools)                     BSD-3-Clause
+  MicroPython (lab tools)                          MIT
+  ESP-IDF (boot shim), ESP-Hosted NG C6 firmware   Apache-2.0
+
+Source, patches, build configs and license texts:
+  https://github.com/tsuyoshi-otake/m5stamp-p4-c6-linux
+  - releases: *-legal-info.tar.gz (Buildroot legal-info, manifest.csv)
+  - versions.lock.json pins every upstream revision

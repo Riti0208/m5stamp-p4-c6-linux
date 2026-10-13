@@ -580,9 +580,12 @@ The images contain third-party software under its own licenses. Corresponding so
 | Dropbear | MIT |
 | wpa_supplicant | BSD-3-Clause |
 | ESP-IDF (boot-shim) | Apache-2.0 |
-| ESP-Hosted NG | to be confirmed |
+| ESP-Hosted NG host driver (`esp32_sdio.ko`) | GPL-2.0-only (shared headers GPL-2.0-only or Apache-2.0) |
+| ESP-Hosted NG C6 firmware (`network_adapter.bin`) | Apache-2.0 |
 
-A project `LICENSE` file and a Buildroot `make legal-info` bundle for releases are still to be added (#31).
+Releases carry `…-legal-info.tar.gz`, Buildroot's `make legal-info` output for the image: the source archives, patches, configs and license texts of every package in the rootfs and the kernel (`manifest.csv` lists them). Sources of build-host tools (`host-sources`) are left out because they are not shipped. Build it locally with `EASYSTICK_LEGAL_INFO=1 bash linux/build-c68.sh …`; it lands in `<vendor>/buildroot/legal-info`. The boot shim and the C6 firmware are built from the ESP-IDF and ESP-Hosted revisions in `versions.lock.json`. The image itself lists the same pointers in `/usr/share/licenses/README`.
+
+The project's own files do not have a `LICENSE` yet; that choice is the maintainer's (#31).
 
 ## Acknowledgments & References
 
