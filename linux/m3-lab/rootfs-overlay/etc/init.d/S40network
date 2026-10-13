@@ -52,6 +52,27 @@ start_wpa() {
 	wpa_supplicant -B -q -i wlan0 -c "$CONF" || echo "M3-lab: wpa_supplicant fallback failed"
 }
 
+# channel= (1-13) in config.txt overrides the SoftAP frequency (#24).  The
+# source file may be on the exported drive, so edit a copy on /run.
+apply_channel() {
+	[ -f "$CFG" ] || return 0
+	ch=$(conf_get channel "$CFG" | tr -d ' ')
+	[ -n "$ch" ] || return 0
+	case "$ch" in
+		[1-9]|1[0-3]) ;;
+		*) echo "M3-lab: ignoring invalid channel=$ch (expected 1-13)"; return 0 ;;
+	esac
+	freq=$((2407 + 5 * ch))
+	if grep -q '^[[:space:]]*frequency=' "$CONF"; then
+		sed "s/^\([[:space:]]*\)frequency=.*/\1frequency=$freq/" "$CONF" > /run/wpa_ap.conf
+	else
+		sed "s/^\([[:space:]]*\)mode=2.*/&\n\1frequency=$freq/" "$CONF" > /run/wpa_ap.conf
+	fi
+	chmod 600 /run/wpa_ap.conf
+	CONF=/run/wpa_ap.conf
+	echo "M3-lab: SoftAP channel $ch ($freq MHz)"
+}
+
 start() {
 	# Cmdline keeps loglevel=8 for bring-up captures, but console traffic at
 	# that level still starves SDIO/ARP on this NOMMU target even after the
@@ -149,6 +170,7 @@ start() {
 				iw dev wlan0 set type __ap 2>/dev/null || iw dev wlan0 set type ap 2>/dev/null || true
 				ifconfig wlan0 192.168.4.1 netmask 255.255.255.0 up || true
 				rm -rf /var/run/wpa_supplicant* 2>/dev/null || true
+				apply_channel || true
 				start_wpa
 				sleep 1
 				if command -v udhcpd >/dev/null 2>&1; then

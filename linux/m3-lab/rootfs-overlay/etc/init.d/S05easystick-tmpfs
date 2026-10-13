@@ -7,6 +7,118 @@ es_log() {
 	printf '%s\n' "$1"
 }
 
+# Per-device credentials (#24) -----------------------------------------------
+# No 0/O/1/I/l so the values can be read off a screen and typed.
+CRED_CHARS='A-HJ-NP-Za-km-z2-9'
+
+rand_str() {
+	s=""
+	while [ "${#s}" -lt "$1" ]; do
+		s="$s$(dd if=/dev/urandom bs=64 count=1 2>/dev/null | tr -dc "$2")"
+	done
+	printf '%s' "$s" | head -c "$1"
+}
+
+# /dev/urandom does not block; wait (first boot only) until the kernel reports
+# the CRNG as seeded so the generated secrets are not predictable.
+wait_crng() {
+	n=0
+	while [ "$n" -lt 20 ]; do
+		[ "$(cat /proc/sys/kernel/random/entropy_avail 2>/dev/null || echo 0)" -ge 256 ] && return 0
+		dmesg 2>/dev/null | grep -q 'crng init done' && return 0
+		n=$((n + 1))
+		sleep 1
+	done
+	return 1
+}
+
+# The image ships with the same SSID/PSK on every board; replace exactly that.
+is_default_wifi() {
+	[ ! -f "$1" ] && return 0
+	grep -q '^[[:space:]]*ssid="m5"' "$1" && grep -q '^[[:space:]]*psk="m5stamp-p4-c6"' "$1"
+}
+
+# First boot: write /boot/credentials.txt and, if the Wi-Fi config is still the
+# shipped default, a SoftAP config with SSID m5-<id>, a random PSK and a
+# channel spread over 1/6/11.  The Wi-Fi MAC is not known yet (wlan0 appears
+# in S40, after the drive is exported), so <id> is a random device id.
+generate_credentials() {
+	wait_crng || es_log "ES_CREDENTIALS WARN: CRNG not reported ready; using /dev/urandom anyway"
+	id=$(rand_str 4 '0-9A-F')
+	pw=$(rand_str 12 "$CRED_CHARS")
+	case "$id" in
+		[0-4]*) ch=1 ;;
+		[5-9A]*) ch=6 ;;
+		*) ch=11 ;;
+	esac
+	{
+		echo "# EasyStick credentials, generated on first boot."
+		echo "# password= is the SSH/console password of user m5.  Edit it, use the"
+		echo "# host's safe-eject action, then reboot: it is applied at every boot."
+		echo "# The Wi-Fi settings in effect are wpa_supplicant.conf (ssid/psk) and"
+		echo "# config.txt (channel=); ssid/psk below are the generated values."
+		echo "device_id=$id"
+		echo "password=$pw"
+	} > /boot/credentials.txt
+	if is_default_wifi /boot/wpa_supplicant.conf; then
+		psk=$(rand_str 12 "$CRED_CHARS")
+		cat > /boot/wpa_supplicant.conf <<-EOF
+		update_config=0
+		ap_scan=1
+
+		network={
+		$(printf '\t')ssid="m5-$id"
+		$(printf '\t')mode=2
+		$(printf '\t')frequency=$((2407 + 5 * ch))
+		$(printf '\t')key_mgmt=WPA-PSK
+		$(printf '\t')proto=RSN
+		$(printf '\t')pairwise=CCMP
+		$(printf '\t')group=CCMP
+		$(printf '\t')psk="$psk"
+		}
+		EOF
+		{
+			echo "ssid=m5-$id"
+			echo "psk=$psk"
+		} >> /boot/credentials.txt
+		if ! grep -q '^[[:space:]]*channel[[:space:]]*=' /boot/config.txt 2>/dev/null; then
+			printf '\n# SoftAP channel (1-13), applied by S40network.\nchannel=%s\n' "$ch" >> /boot/config.txt
+		fi
+		# The template's static status.txt still names the old shared SSID.
+		rm -f /boot/status.txt
+		es_log "ES_CREDENTIALS NEW: ssid=m5-$id psk=$psk channel=$ch user=m5 password=$pw"
+	else
+		es_log "ES_CREDENTIALS NEW: user=m5 password=$pw (custom wpa_supplicant.conf kept)"
+	fi
+	es_log "ES_CREDENTIALS: also in credentials.txt on the USB drive and /tmp/credentials.txt (root)"
+}
+
+# Apply password= from credentials.txt to user m5.  /etc is read-only squashfs,
+# so a patched copy of /etc/shadow on /run is bind-mounted over it each boot.
+apply_password() {
+	[ -f "$1" ] || return 0
+	cr=$(printf '\r')
+	pw=$(sed -e "s/$cr\$//" "$1" | sed -n 's/^password=//p' | head -n1)
+	case "$pw" in
+		''|*:*) es_log "ES_CREDENTIALS: no usable password= in credentials.txt"; return 0 ;;
+	esac
+	if [ "${#pw}" -lt 8 ] || [ "${#pw}" -gt 64 ]; then
+		es_log "ES_CREDENTIALS: password= must be 8-64 characters; keeping the built-in password"
+		return 0
+	fi
+	hash=$(printf '%s\n' "$pw" | cryptpw -m sha512 2>/dev/null) || hash=""
+	case "$hash" in
+		'$6$'*) ;;
+		*) es_log "ES_CREDENTIALS FAIL: cryptpw unavailable; keeping the built-in password"; return 0 ;;
+	esac
+	if sed "s|^m5:[^:]*:|m5:${hash}:|" /etc/shadow > /run/shadow &&
+		chmod 600 /run/shadow && mount --bind /run/shadow /etc/shadow; then
+		es_log "ES_CREDENTIALS: m5 password applied from credentials.txt"
+	else
+		es_log "ES_CREDENTIALS FAIL: could not apply the password; keeping the built-in password"
+	fi
+}
+
 start() {
 	es_log "ES_TMPFS BEGIN"
 	mkdir -p /tmp 2>/dev/null || true
@@ -124,6 +236,19 @@ hostname=easystick
 # maxcpus is fixed in the DTB (maxcpus=1); this file does not change the CPU count.
 EOF
 		fi
+		CRED_NEW=0
+		if [ ! -f /boot/credentials.txt ]; then
+			if generate_credentials; then
+				CRED_NEW=1
+			else
+				es_log "ES_CREDENTIALS FAIL: could not write credentials to /boot"
+			fi
+		fi
+		apply_password /boot/credentials.txt || true
+		if [ -f /boot/credentials.txt ]; then
+			cp -f /boot/credentials.txt /tmp/credentials.txt 2>/dev/null || true
+			chmod 600 /tmp/credentials.txt 2>/dev/null || true
+		fi
 		# Cache /boot configuration files to /tmp so S40network can access them
 		# even after /boot is unmounted for USB Mass Storage
 		if [ -f /boot/wpa_supplicant.conf ]; then
@@ -139,12 +264,25 @@ EOF
 		sync
 		umount /boot 2>/dev/null || true
 		es_log "ES_BOOT_FS SYNC_UMOUNT OK"
+		# Stage the image with the new credentials; boot-shim writes it to the
+		# A/B flash slots on the next normal reboot.  Until then a power cycle
+		# loses it and the next boot generates new values.
+		if [ "${CRED_NEW:-0}" -eq 1 ] && [ -f /tmp/boot.img ] && [ -x /usr/sbin/easystick-boot-commit ]; then
+			if /usr/sbin/easystick-boot-commit /tmp/boot.img; then
+				es_log "ES_CREDENTIALS: staged; saved to flash at the next reboot"
+			else
+				es_log "ES_CREDENTIALS FAIL: could not stage boot.img; a power cycle generates new credentials"
+			fi
+		fi
 	fi
 
 	# Start USB Mass Storage Gadget on Full-Speed DWC2 (Type-A port)
 	if [ -f /tmp/boot.img ]; then
 		es_log "ES_USB_GADGET STARTING"
 		USB_SERIAL=$(tr -d : < /sys/class/net/wlan0/address 2>/dev/null || true)
+		if [ -z "$USB_SERIAL" ]; then
+			USB_SERIAL=$(sed -n 's/^device_id=\([0-9A-F]*\).*/EASYSTICK\1/p' /tmp/credentials.txt 2>/dev/null | head -n1)
+		fi
 		USB_SERIAL=${USB_SERIAL:-EASYSTICK0001}
 		if modprobe g_mass_storage file=/tmp/boot.img removable=1 stall=0 iSerialNumber="$USB_SERIAL" 2>&1; then
 			es_log "ES_USB_GADGET OK: g_mass_storage enabled"

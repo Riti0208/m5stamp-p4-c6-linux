@@ -136,3 +136,6 @@ CONFIG_FEATURE_VI_ASK_TERMINAL=y
 # the shell itself so periodic loops stop allocating a fresh image per tick.
 CONFIG_FEATURE_SH_NOFORK=y
 CONFIG_FEATURE_PREFER_APPLETS=y
+
+# #24: S05 hashes the per-device m5 password from credentials.txt at boot.
+CONFIG_CRYPTPW=y
