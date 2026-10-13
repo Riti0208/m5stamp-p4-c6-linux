@@ -69,6 +69,14 @@ Linux / macOS serial examples, how to open the console without resetting the boa
 
 ### 1. Download Release Package
 
+> **Known mismatch (#8):** the published `v0.2.1-smp` binaries were built before the
+> A/B `/boot` update and the `/tmp/easystick-status.txt` fix. They have no `boot_alt` /
+> `bootmeta*` partitions, and their `easystick-update-status` still writes to the exported
+> FAT image. The A/B, `-PreserveBoot` and status-file descriptions below apply to a build
+> from `main` (see `linux/README.md`) and to the next
+> release, which is produced by the tag-driven `release` workflow with a debug bundle
+> (`System.map`, `vmlinux`) and a hash check against the hardware-validation record.
+
 Download either the monolithic 16MB raw flash image or the partition zip package from the [Releases](https://github.com/tsuyoshi-otake/m5stamp-p4-c6-linux/releases) page:
 - **`m5stamp-p4-c6-linux-smp-v0.2.1-16mb.bin.gz`**: Single 16MB raw flash image (simplest, flash to `0x0`).
 - **`m5stamp-p4-c6-linux-smp-v0.2.1.zip`**: Individual partition binaries with automated PowerShell flash script.
