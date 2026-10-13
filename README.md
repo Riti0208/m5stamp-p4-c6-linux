@@ -4,14 +4,14 @@
 [![Platform](https://img.shields.io/badge/platform-ESP32--P4%20%2B%20ESP32--C6-orange.svg)](https://m5stack.com)
 [![CPU](https://img.shields.io/badge/SMP-Experimental%20Dual--Core%20RV32IMAC-yellow.svg)](https://github.com/tsuyoshi-otake/m5stamp-p4-c6-linux/releases)
 
-A reproducible, native **Dual-Core SMP** RISC-V NOMMU Linux 6.18 distribution for the **M5Stack Stamp-P4** carrier board paired with **Stamp-AddOn C6** (via 4-bit SDIO interface).
+A reproducible RISC-V NOMMU Linux 6.18 distribution (SMP kernel; the shipped image runs on one core, dual-core is experimental, see below) for the **M5Stack Stamp-P4** carrier board paired with **Stamp-AddOn C6** (via 4-bit SDIO interface).
 
 Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SSH server, BusyBox `vi`, MicroPython (`python3`), and a writable OverlayFS on `/home`, `/root`, and `/var/lib`.
 
 <p align="center">
   <img src="docs/images/ssh-session-dual-core-smp.png" alt="M5Stamp ESP32-P4 + C6 Dual-Core SMP SSH Session" width="650">
   <br>
-  <em>Live SSH session on M5Stamp ESP32-P4 + C6 showing dual-core SMP operation (CPU0 and CPU1) via SDIO Wi-Fi.</em>
+  <em>Live SSH session on M5Stamp ESP32-P4 + C6 from an experimental dual-core run (CPU0 and CPU1) via SDIO Wi-Fi; the shipped image boots with <code>maxcpus=1</code>.</em>
 </p>
 
 ---
