@@ -3,27 +3,37 @@
 # BusyBox ash in the RV32 NOMMU image does not implement `set -u`.
 set -e
 
-set_static_ip() {
-	local tries=0
-	local ssid=$(grep 'ssid=' "$CONF" 2>/dev/null | head -n1 | cut -d'"' -f2)
-	while [ "$tries" -lt 10 ]; do
-		if ifconfig wlan0 10.255.10.161 netmask 255.255.255.0 up &&
-			ifconfig wlan0 2>/dev/null | grep -q 'inet addr:10.255.10.161'; then
-			route add -net 10.255.10.0 netmask 255.255.255.0 dev wlan0 \
-				2>/dev/null || true
-			echo "M3-lab: static IPv4 fallback complete"
-			ifconfig wlan0 2>/dev/null || true
-			[ -x /usr/sbin/easystick-update-status ] && /usr/sbin/easystick-update-status "CONNECTED" "10.255.10.161" "255.255.255.0" "10.255.10.1" "${ssid:-none}" "sta" &
-			return 0
-		fi
-		tries=$((tries + 1))
-		sleep 1
-	done
-	echo "M3-lab: static IPv4 fallback failed"
-	ifconfig wlan0 2>/dev/null || true
-	[ -x /usr/sbin/easystick-update-status ] && /usr/sbin/easystick-update-status "DISCONNECTED" "none" "none" "none" "${ssid:-none}" "sta" &
+# Parsing helpers: tolerate a UTF-8 BOM, CRLF, spaces around "=" and comments.
+conf_get() {
+	bom=$(printf '\357\273\277')
+	cr=$(printf '\r')
+	sed -e "1s/^$bom//" -e "s/$cr\$//" "$2" 2>/dev/null |
+		sed -n -e "s/^[ 	]*$1[ 	]*=[ 	]*//p" | head -n1
 }
 
+conf_ssid() {
+	conf_get ssid "$1" | sed -e 's/^"//' -e 's/"[ 	]*$//'
+}
+
+# DHCP failed: do not invent a lab address or claim to be connected.
+dhcp_failed() {
+	local ssid=$(conf_ssid "$CONF")
+	echo "M3-lab: DHCP failed"
+	ifconfig wlan0 2>/dev/null || true
+	[ -x /usr/sbin/easystick-update-status ] && /usr/sbin/easystick-update-status "DHCP_FAILED" "none" "none" "none" "${ssid:-none}" "sta" &
+	return 0
+}
+
+# Start wpa_supplicant with $CONF; if it rejects the file (short psk, syntax
+# error, BOM...), fall back to the built-in default so the board stays reachable.
+start_wpa() {
+	if wpa_supplicant -B -i wlan0 -c "$CONF"; then
+		return 0
+	fi
+	echo "M3-lab: wpa_supplicant failed with $CONF; falling back to /etc/easystick/wpa_supplicant.conf"
+	CONF=/etc/easystick/wpa_supplicant.conf
+	wpa_supplicant -B -i wlan0 -c "$CONF" || echo "M3-lab: wpa_supplicant fallback failed"
+}
 start() {
 	# Cmdline keeps loglevel=8 for bring-up captures, but console traffic at
 	# that level still starves SDIO/ARP on this NOMMU target even after the
@@ -93,15 +103,19 @@ start() {
 
 	is_ap=0
 	if [ -f "$CFG" ]; then
-		cfg_mode=$(grep '^wifi_mode=' "$CFG" 2>/dev/null | cut -d'=' -f2 | tr -d '\r\n ')
+		cfg_mode=$(conf_get wifi_mode "$CFG" | tr -d ' ')
+		cfg_host=$(conf_get hostname "$CFG" | tr -d ' ')
+		if [ -n "$cfg_host" ]; then
+			hostname "$cfg_host" 2>/dev/null || true
+		fi
 		if [ "$cfg_mode" = "ap" ]; then
 			is_ap=1
 		elif [ "$cfg_mode" = "sta" ]; then
 			is_ap=0
-		elif grep -q 'mode=2' "$CONF" 2>/dev/null; then
+		elif grep -q '^[[:space:]]*mode=2' "$CONF" 2>/dev/null; then
 			is_ap=1
 		fi
-	elif grep -q 'mode=2' "$CONF" 2>/dev/null; then
+	elif grep -q '^[[:space:]]*mode=2' "$CONF" 2>/dev/null; then
 		is_ap=1
 	fi
 
@@ -115,9 +129,9 @@ start() {
 				killall udhcpd 2>/dev/null || true
 				ifconfig wlan0 down 2>/dev/null || true
 				iw dev wlan0 set type __ap 2>/dev/null || iw dev wlan0 set type ap 2>/dev/null || true
-				ifconfig wlan0 192.168.4.1 netmask 255.255.255.0 up
+				ifconfig wlan0 192.168.4.1 netmask 255.255.255.0 up || true
 				rm -rf /var/run/wpa_supplicant* 2>/dev/null || true
-				wpa_supplicant -B -i wlan0 -c "$CONF"
+				start_wpa
 				sleep 1
 				if command -v udhcpd >/dev/null 2>&1; then
 					mkdir -p /tmp /var/lib/misc
@@ -127,7 +141,7 @@ start() {
 				else
 					echo "M3-lab: udhcpd not found"
 				fi
-				AP_SSID=$(grep 'ssid=' "$CONF" 2>/dev/null | head -n1 | cut -d'"' -f2)
+				AP_SSID=$(conf_ssid "$CONF")
 				echo "M3-lab: SoftAP started (SSID: ${AP_SSID:-m5}, IP: 192.168.4.1)"
 				[ -x /etc/init.d/S85easystick-ssh ] && /etc/init.d/S85easystick-ssh restart &
 				[ -x /usr/sbin/easystick-update-status ] && /usr/sbin/easystick-update-status "AP_ACTIVE" "192.168.4.1" "255.255.255.0" "192.168.4.1" "${AP_SSID:-m5}" "ap" &
@@ -137,17 +151,17 @@ start() {
 			# STA / managed mode
 			ifconfig wlan0 down 2>/dev/null || true
 			iw dev wlan0 set type managed || true
-			ifconfig wlan0 0.0.0.0 up
+			ifconfig wlan0 0.0.0.0 up || true
 			rm -rf /var/run/wpa_supplicant* 2>/dev/null || true
-			wpa_supplicant -B -i wlan0 -c "$CONF"
+			start_wpa
 			j=0
 			while [ "$j" -lt 60 ]; do
 				if iw dev wlan0 link 2>/dev/null | grep -q 'Connected'; then
 					echo "M3-lab: association complete; configuring IPv4"
 					if command -v udhcpc >/dev/null 2>&1; then
-						udhcpc -i wlan0 -n -q -t 5 2>/dev/null || set_static_ip
+						udhcpc -i wlan0 -n -t 5 2>/dev/null || dhcp_failed
 					else
-						set_static_ip
+						dhcp_failed
 					fi
 					[ -x /etc/init.d/S85easystick-ssh ] && /etc/init.d/S85easystick-ssh restart &
 					return 0
@@ -159,7 +173,7 @@ start() {
 			iw dev wlan0 link 2>/dev/null || true
 			ifconfig wlan0 2>/dev/null || true
 			echo "M3-lab: wlan0 did not associate"
-			sta_ssid=$(grep 'ssid=' "$CONF" 2>/dev/null | head -n1 | cut -d'"' -f2)
+			sta_ssid=$(conf_ssid "$CONF")
 			[ -x /usr/sbin/easystick-update-status ] && /usr/sbin/easystick-update-status "DISCONNECTED" "none" "none" "none" "${sta_ssid:-none}" "sta" &
 			return 0
 		fi
