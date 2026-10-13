@@ -27,12 +27,12 @@ dhcp_failed() {
 # Start wpa_supplicant with $CONF; if it rejects the file (short psk, syntax
 # error, BOM...), fall back to the built-in default so the board stays reachable.
 start_wpa() {
-	if wpa_supplicant -B -i wlan0 -c "$CONF"; then
+	if wpa_supplicant -B -q -i wlan0 -c "$CONF"; then
 		return 0
 	fi
 	echo "M3-lab: wpa_supplicant failed with $CONF; falling back to /etc/easystick/wpa_supplicant.conf"
 	CONF=/etc/easystick/wpa_supplicant.conf
-	wpa_supplicant -B -i wlan0 -c "$CONF" || echo "M3-lab: wpa_supplicant fallback failed"
+	wpa_supplicant -B -q -i wlan0 -c "$CONF" || echo "M3-lab: wpa_supplicant fallback failed"
 }
 start() {
 	# Cmdline keeps loglevel=8 for bring-up captures, but console traffic at
