@@ -72,7 +72,9 @@ start_locked() {
 	if ! inetd_running; then
 		es_hk "ES_HOSTKEY INETD_START"
 		printf '%s\n' "M3-lab: starting password-enabled Dropbear on TCP/22"
-		/usr/sbin/inetd -f /etc/inetd.conf &
+		# Respawn inetd if it is ever killed (e.g. by the OOM killer).
+		( while :; do /usr/sbin/inetd -f -R 10 /etc/inetd.conf; sleep 2; done ) &
+		echo $! > /tmp/.es-inetd-sup
 	else
 		es_hk "ES_HOSTKEY INETD_ALREADY"
 		printf '%s\n' "M3-lab: inetd already running"
@@ -88,6 +90,8 @@ restart() {
 case "${1:-start}" in
 	start) start ;;
 	restart|reload) restart ;;
-	stop) killall inetd 2>/dev/null || true ;;
+	stop)
+		[ -f /tmp/.es-inetd-sup ] && kill "$(cat /tmp/.es-inetd-sup)" 2>/dev/null || true
+		killall inetd 2>/dev/null || true ;;
 	*) echo "Usage: $0 {start|stop|restart|reload}" >&2; exit 1 ;;
 esac

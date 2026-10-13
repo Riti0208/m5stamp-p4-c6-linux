@@ -28,6 +28,7 @@ start() {
 	echo 1 > /proc/sys/kernel/dmesg_restrict 2>/dev/null || true
 	echo 1 > /proc/sys/kernel/kptr_restrict 2>/dev/null || true
 	echo 1 > /proc/sys/kernel/panic_on_oops 2>/dev/null || true
+	echo 1 > /proc/sys/vm/oom_kill_allocating_task 2>/dev/null || true
 
 	# OverlayFS for writable /home, /root, /var/lib
 	es_log "ES_OVERLAY BEGIN"

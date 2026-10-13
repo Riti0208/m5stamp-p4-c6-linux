@@ -21,3 +21,5 @@ CONFIG_NLS_ISO8859_1=y
 
 # overlayfs on tmpfs needs xattr support (opaque dirs / redirects)
 CONFIG_TMPFS_XATTR=y
+# Real tmpfs so size= is honoured; with SHMEM=n /tmp is an unbounded ramfs.
+CONFIG_SHMEM=y
