@@ -6,6 +6,8 @@ BOOT_IMG="/tmp/boot.img"
 LUN_CTL="/usr/sbin/easystick-usb-lun"
 BOOT_COMMIT="/usr/sbin/easystick-boot-commit"
 MNT_POINT="/tmp/mnt_snap"
+# Snapshots and staged files carry credentials and the Wi-Fi PSK (#11).
+umask 077
 
 log() {
 	echo "[bootsync] $1"

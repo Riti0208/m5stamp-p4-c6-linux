@@ -239,6 +239,8 @@ start() {
 			es_log "ES_BOOT_FAT: successfully restored valid FAT image from PSRAM"
 		fi
 	fi
+	# The image holds credentials.txt and the Wi-Fi PSK (#11).
+	chmod 600 /tmp/boot.img 2>/dev/null || true
 
 	mkdir -p /boot 2>/dev/null || true
 	if [ -f /tmp/boot.img ]; then
