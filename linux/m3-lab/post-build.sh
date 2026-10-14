@@ -123,7 +123,7 @@ make_boot_template() {
 # hostname is applied at boot by S40network.
 hostname=easystick
 # wifi_mode: ap or sta.  Leave unset to auto-detect from mode=2 in wpa_supplicant.conf.
-wifi_mode=ap
+#wifi_mode=ap
 # wifi_ssid/wifi_psk replace wpa_supplicant.conf (station, or SoftAP with wifi_mode=ap).
 #wifi_ssid=MyRouter
 #wifi_psk=MyPassphrase
@@ -135,6 +135,7 @@ wifi_mode=ap
 #ssh_password_auth=no
 # Reset the board if userland stops responding or SSH (inetd) stays down.
 #watchdog=1
+# maxcpus is fixed in the DTB (maxcpus=1); this file does not change the CPU count.
 # Put an empty file named factory-reset on this drive and reboot to restore
 # these defaults and generate new credentials.
 EOF
