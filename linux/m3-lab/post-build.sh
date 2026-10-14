@@ -71,6 +71,22 @@ for applet in \
 		fi
 	done
 done
+# The list above is hand-kept; busybox.links is what this build compiled in
+# (#28).  Drop any other BusyBox symlink left over from an earlier config.
+bb_links=$(ls "${BUILD_DIR:-/nonexistent}"/busybox-*/busybox.links 2>/dev/null | head -n 1)
+if [ -n "${bb_links}" ]; then
+	find "${TARGET_DIR}/bin" "${TARGET_DIR}/sbin" "${TARGET_DIR}/usr/bin" \
+		"${TARGET_DIR}/usr/sbin" -type l 2>/dev/null | while read -r link; do
+		case "$(readlink "${link}")" in
+			*busybox) ;;
+			*) continue ;;
+		esac
+		grep -Fqx "/${link#"${TARGET_DIR}"/}" "${bb_links}" || {
+			echo "M3-lab: removing stale applet link ${link#"${TARGET_DIR}"/}"
+			rm -f "${link}"
+		}
+	done
+fi
 
 # EASYSTICK_LAB_TOOLS=0 (#32) builds without dbclient; drop the other
 # bring-up entry points with it.
@@ -182,3 +198,18 @@ mkdir -p "${TARGET_DIR}/boot"
 	echo "dirty=${GIT_DIRTY}"
 	echo "build_date=$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y-%m-%dT%H:%M:%SZ)"
 } > "${TARGET_DIR}/etc/easystick-release"
+
+# No dangling symlinks (#28), except those into runtime filesystems.
+find "${TARGET_DIR}" -type l | while read -r link; do
+	t=$(readlink "${link}")
+	case "${t}" in
+		/*) p="${TARGET_DIR}${t}" ;;
+		*) p="$(dirname "${link}")/${t}" ;;
+	esac
+	[ -e "${p}" ] && continue
+	case "${t}" in
+		*proc/*|*tmp/*|*/run/*|/run/*|*dev/*|*sys/*) continue ;;
+	esac
+	echo "M3-lab: dangling symlink ${link#"${TARGET_DIR}"/} -> ${t}" >&2
+	exit 1
+done || exit 1
