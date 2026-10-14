@@ -95,7 +95,13 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
   - `panic=0` + sysrq: the kernel hangs, the MWDT resets the board within the
     7-minute capture window, and the record survives.  PSRAM keeps ramoops across a
     watchdog reset.
-  - No `dmesg-ramoops-*` record appears; the console record is the only one.
+  - G had no `dmesg-ramoops-*` record and the console record stopped at the
+    call trace: PSRAM is behind a write-back L1D/L2 that the reset drops.
+    Candidate H (G + zone writeback in 0065) after clearing
+    `/sys/fs/pstore`: sysrq panic gives `dmesg-ramoops-0` (11672 B) and a
+    console record ending in `Rebooting in 5 seconds..`; the panic=0 hang
+    reset by the MWDT gives a fresh `dmesg-ramoops-0` (11832 B) containing
+    `sysrq triggered crash`.
 - **#21-1**: with the cap at 5 MHz, `ES_SDIO_CLOCK_HW ... actual_clock_hz=5000000`;
   cold boot 11/11 and reboot 12/12 PASS.  Throughput (`scp`) and the soak
   were not run (no Wi-Fi client attached), so the DTS default stays 400 kHz.
@@ -103,11 +109,11 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
   (b89fcbb now dircleans linux when the staged series changes).
 
 Flashing E/G rewrote the boot partition from the template, so the board
-generated new credentials (SSID `m5-F314`; see credentials.txt on the USB
+generated new credentials (SSID `m5-F314`, then `m5-4D54` after H; see credentials.txt on the USB
 drive).
 
 ## Board state at the end of the session
 
-Running candidate G (pstore + 5 MHz SDIO test image), SoftAP SSID `m5-F314`
+Running candidate H (pstore + 5 MHz SDIO test image), SoftAP SSID `m5-4D54`
 at 192.168.4.1.  The backup
 above restores the original image.

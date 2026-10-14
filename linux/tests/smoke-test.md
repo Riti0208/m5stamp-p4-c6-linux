@@ -96,11 +96,13 @@ rate that passes all of them should become the DTS default.
 echo c > /proc/sysrq-trigger     # deliberate panic; sysrq is only in this image
 ```
 
-After the panic=5 reset, `ES_PSTORE OK` must report at least one record and
-`/sys/fs/pstore/console-ramoops-0` must hold the panic and its call trace.
+After the panic=5 reset, `ES_PSTORE OK` must report two records:
+`dmesg-ramoops-0` with the panic, and `console-ramoops-0` ending in
+`Rebooting in 5 seconds..`.  `rm /sys/fs/pstore/*` before each run so an
+old record is not mistaken for a new one.
 Repeat after `echo 0 > /proc/sys/kernel/panic` so the kernel hangs and the
 watchdog resets the board; the record must survive that too (verified
-2026-10-14).  A `dmesg-ramoops-*` record has not been observed yet.
+2026-10-14).
 
 ## 9. Record
 

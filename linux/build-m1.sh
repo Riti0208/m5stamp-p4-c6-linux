@@ -36,7 +36,7 @@ does not change any image.
 Set EASYSTICK_PSTORE=1 with --profile m3-lab to reserve 64 KB of PSRAM for
 ramoops (kernel oops/panic and console tail, #26).  On hardware the console
 record keeps the panic across both the panic=5 restart and a watchdog reset
-of a hung kernel; no dmesg-ramoops record has been seen yet.
+of a hung kernel, together with a dmesg-ramoops record.
 Set EASYSTICK_BUILDROOT_JLEVEL=1 to serialize nested Buildroot package makes.
 This is useful for BusyBox versions whose generated applet tables are not safe
 when install-noclobber is invoked in parallel.
