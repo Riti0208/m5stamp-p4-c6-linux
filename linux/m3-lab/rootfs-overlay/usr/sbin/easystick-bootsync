@@ -71,7 +71,7 @@ reattach() {
 TICK_FIFO=/run/.bootsync-tick
 tick() {
 	if [ -p "$TICK_FIFO" ]; then
-		read -r -t "$1" _ <> "$TICK_FIFO" 2>/dev/null || true
+		read -r -t "$1" _ 0<> "$TICK_FIFO" 2>/dev/null || true
 	else
 		sleep "$1"
 	fi

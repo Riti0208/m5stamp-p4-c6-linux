@@ -76,7 +76,7 @@ The console and an open SSH session must stay alive.
 Leave the board up for 24 h with a client attached, sampling every 10 min:
 
 ```sh
-while :; do date; grep MemAvailable /proc/meminfo; cat /proc/loadavg; read -t 600 _ <> /run/.soak 2>/dev/null; done
+while :; do date; grep MemAvailable /proc/meminfo; cat /proc/loadavg; read -t 600 _ 0<> /run/.soak 2>/dev/null; done
 ```
 
 (`mkfifo /run/.soak` first; `read -t` on a FIFO avoids an exec per sample.)

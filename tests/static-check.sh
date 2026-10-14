@@ -2,7 +2,8 @@
 # Static checks for the rootfs scripts (#28).  Run from the repository root.
 #   1. every script parses with sh -n
 #   2. no script uses a command that the BusyBox build does not provide
-#   3. shellcheck (if installed) reports no errors
+#   3. no bare `<>` redirection (hush applies it to fd 1, not fd 0)
+#   4. shellcheck (if installed) reports no errors
 set -u
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -27,6 +28,12 @@ for f in $scripts; do
 			fail=1
 		fi
 	done
+	# The NOMMU /bin/sh is hush, whose bare `<>` opens on fd 1: `read <> fifo`
+	# then reads the console and steals keystrokes.  Write `0<>`.
+	if grep -v '^[[:space:]]*#' "$f" | grep -Eq '(^|[^0-9])<>'; then
+		echo "FAIL bare '<>' (use '0<>') in $f"
+		fail=1
+	fi
 done
 
 if command -v shellcheck >/dev/null 2>&1; then
