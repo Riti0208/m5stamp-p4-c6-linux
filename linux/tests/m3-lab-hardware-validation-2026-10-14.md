@@ -111,6 +111,38 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
   init step.  The SMP profile that passed in August had neither USB gadget
   nor Wi-Fi.  A lost cross-CPU wakeup (IPI) is the leading suspect; it is
   not proven.  Root cause not found.
+
+  Follow-up later the same day:
+  - 0066 (shared CLIC IRQs routed to CPU0 under SMP, bcbf2a2) and 0067
+    (the ROM cache-sync engine serialised across CPUs, f7e4e46).  With both,
+    candidate Q booted SMP to login and ran 200 `dropbearkey` runs (about
+    8,800 IPIs) for about 20 minutes with no fault.
+  - **The `Guru Meditation Error: Core 1` line is not the fault.**  The
+    text comes from the ESP32-P4 ROM exception handler, not from the
+    shim's panic handler: a wrapped `esp_panic_handler` never ran, and the
+    IDF USB-Serial-JTAG writer would not explain the constant truncation
+    either.  A counter in LP RAM showed CPU1 entering
+    `c68_secondary_entry` twice per SMP reboot.  The MWDT system reset
+    keeps the APP CPU boot address.  The ROM restarts CPU1 in the stale
+    entry, which finds `c68_release` still GO and jumps to uninitialised
+    PSRAM, and the ROM prints the Guru while the chip resets.  Every SMP
+    `reboot` printed it; UP reboots never did.  The earlier "Guru" hangs
+    were therefore watchdog resets after a real hang, with this line as a
+    by-product.
+  - Fix: the shim clears the boot address (`ets_set_appcpu_boot_addr(0)`)
+    once CPU1 reports WAITING.  On candidate X (fix plus counter): one
+    entry per boot and 0 Guru in 3 SMP reboots.  On candidate Y (the fix
+    alone): UP cold boot 11/11, UP reboot 12/12, an SMP cold boot plus 3
+    SMP reboots all reached login with 2 CPUs, no Guru and no stall, and
+    11/11 again after restoring the `maxcpus=1` DTB.
+  - **Still open:** an intermittent RCU stall early in SMP boots, seen on
+    1 of 3 reboots on candidate X:
+    `rcu_sched kthread starved for 5246 jiffies! ... RCU_GP_WAIT_FQS(5) ->state=0x0 ->cpu=0`,
+    `All QSes seen`.  It appears right after the init scripts start
+    `udhcpd`, and again at 21001 jiffies.  The GP kthread is runnable on
+    CPU0, but CPU0 does not schedule it.  The board recovers and reaches
+    login.  The stall dump printed no stack.  This is the remaining #5
+    symptom, and its root cause is not known.
 - **#26 pstore** (candidate G = D + `EASYSTICK_PSTORE=1`
   `EASYSTICK_SDIO_MAX_KHZ=5000`; candidate E, the same without 0065,
   panicked at boot with `kernel BUG at mm/nommu.c:311`):
@@ -130,6 +162,14 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
 - **#21-1**: with the cap at 5 MHz, `ES_SDIO_CLOCK_HW ... actual_clock_hz=5000000`;
   cold boot 11/11 and reboot 12/12 PASS.  Throughput (`scp`) and the soak
   were not run (no Wi-Fi client attached), so the DTS default stays 400 kHz.
+- **First-boot OOM (#17, #29), 9210dc2**: three resident respawn
+  subshells (about 500 KB of BusyBox each on NOMMU) made S40's `conf_get`
+  pipelines fail on the first boot and print an empty SSID.  The new
+  `easystick-respawn` supervisor (about 110 KB) replaces them.  On
+  candidate P, the first boot after flashing gave 11/11 with the right
+  SSID and no OOM, and a reboot gave 12/12.  Still seen: one `sed`
+  OOM-killed during host-key generation on a reboot.  Nested `$(...)` on
+  the console can still exhaust memory.
 - Build: an incremental build kept the previous kernel when 0065 was added
   (b89fcbb now dircleans linux when the staged series changes).
 
@@ -139,7 +179,8 @@ generated new credentials (SSID `m5-F314`, then `m5-4D54` after H and
 
 ## Board state at the end of the session
 
-Running candidate J (H plus the inert `es.nousb` test gate) with the
-normal `maxcpus=1` DTB, 11/11 PASS; SoftAP SSID `m5-73D7` at 192.168.4.1.
+Running candidate Y (main with 0066/0067, 9210dc2 and the boot-address
+fix) with the normal `maxcpus=1` DTB, 11/11 PASS; SoftAP at 192.168.4.1
+(credentials in credentials.txt on the USB drive).
 The backup
 above restores the original image.
