@@ -4,15 +4,22 @@
 set -e
 
 # Parsing helpers: tolerate a UTF-8 BOM, CRLF, spaces around "=" and comments.
+# $3 is optional sed commands applied to the value.  Keep this one process:
+# BusyBox is not shared text on NOMMU, so every pipeline stage costs another
+# ~0.5 MB copy, and the old sed|sed|head (plus |tr) ran first-boot S40 out of
+# memory ("Allocation of length 507904 ... failed").
 conf_get() {
 	bom=$(printf '\357\273\277')
 	cr=$(printf '\r')
-	sed -e "1s/^$bom//" -e "s/$cr\$//" "$2" 2>/dev/null |
-		sed -n -e "s/^[ 	]*$1[ 	]*=[ 	]*//p" | head -n1
+	sed -n -e "1s/^$bom//" -e "s/$cr\$//" \
+		-e "/^[[:blank:]]*$1[[:blank:]]*=/{s/^[[:blank:]]*$1[[:blank:]]*=[[:blank:]]*//;${3:-}p;q;}" "$2" 2>/dev/null
 }
 
+UNQUOTE='s/^"//;s/"[ 	]*$//;'
+NOSPACE='s/ //g;'
+
 conf_ssid() {
-	conf_get ssid "$1" | sed -e 's/^"//' -e 's/"[ 	]*$//'
+	conf_get ssid "$1" "$UNQUOTE"
 }
 
 # DHCP failed: do not invent a lab address or claim to be connected.
@@ -41,17 +48,21 @@ run_dhcp() {
 	return 1
 }
 
-# wpa_supplicant runs in the foreground under a respawn loop, like udhcpd: if
-# it dies the loop restarts it.  The loop reads the config path from
-# $WPA_CONF_RUN on each start, so the fallback below also survives a respawn.
+# wpa_supplicant runs in the foreground under easystick-respawn, like udhcpd:
+# if it dies it is restarted.  A shell "while" loop would keep a private
+# ~500 KB BusyBox copy resident on NOMMU for each supervised daemon.
 WPA_SUP=/run/.es-wpa-sup
 WPA_PID=/run/.es-wpa-pid
-WPA_CONF_RUN=/run/.es-wpa-conf
+stop_sup() {
+	s=""
+	read -r s 2>/dev/null < "$1" || true
+	# The supervisor stops its child when it is terminated.
+	[ -n "$s" ] && kill "$s" 2>/dev/null || true
+	rm -f "$1"
+}
+
 stop_wpa() {
-	if [ -f "$WPA_SUP" ]; then
-		kill "$(cat "$WPA_SUP")" 2>/dev/null || true
-		rm -f "$WPA_SUP"
-	fi
+	stop_sup "$WPA_SUP"
 	if wpa_alive; then
 		kill "$p" 2>/dev/null || true
 	fi
@@ -74,35 +85,28 @@ wpa_settled() {
 
 # Start wpa_supplicant with $CONF; if it rejects the file (short psk, syntax
 # error, BOM...), fall back to the built-in default so the board stays reachable.
+spawn_wpa() {
+	easystick-respawn -d 5 -p "$WPA_PID" -- \
+		wpa_supplicant -q -i wlan0 -c "$CONF" >/dev/null 2>&1 &
+	echo $! > "$WPA_SUP"
+}
+
 start_wpa() {
 	stop_wpa
-	echo "$CONF" > "$WPA_CONF_RUN"
-	(
-		while :; do
-			c=""
-			read -r c 2>/dev/null < "$WPA_CONF_RUN" || true
-			wpa_supplicant -q -i wlan0 -c "${c:-/etc/easystick/wpa_supplicant.conf}" &
-			echo $! > "$WPA_PID"
-			wait $!
-			rm -f "$WPA_PID" /var/run/wpa_supplicant/wlan0
-			sleep 5
-		done
-	) >/dev/null 2>&1 &
-	echo $! > "$WPA_SUP"
+	spawn_wpa
 	wpa_settled && return 0
 	echo "M3-lab: wpa_supplicant failed with $CONF; falling back to /etc/easystick/wpa_supplicant.conf"
 	CONF=/etc/easystick/wpa_supplicant.conf
-	echo "$CONF" > "$WPA_CONF_RUN"
-	# The loop picks up the new path on its next start (at most 5 s).
-	sleep 6
-	wpa_alive || echo "M3-lab: wpa_supplicant fallback failed"
+	stop_wpa
+	spawn_wpa
+	wpa_settled || echo "M3-lab: wpa_supplicant fallback failed"
 }
 
 # channel= (1-13) in config.txt overrides the SoftAP frequency (#24).  The
 # source file may be on the exported drive, so edit a copy on /run.
 apply_channel() {
 	[ -f "$CFG" ] || return 0
-	ch=$(conf_get channel "$CFG" | tr -d ' ')
+	ch=$(conf_get channel "$CFG" "$NOSPACE")
 	[ -n "$ch" ] || return 0
 	case "$ch" in
 		[1-9]|1[0-3]) ;;
@@ -123,7 +127,7 @@ apply_channel() {
 # board stays on the world domain, which is the safe default.
 apply_country() {
 	[ -f "$CFG" ] || return 0
-	cc=$(conf_get country "$CFG" | tr -d ' ' | tr a-z A-Z)
+	cc=$(conf_get country "$CFG" "${NOSPACE}y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/;")
 	[ -n "$cc" ] || return 0
 	case "$cc" in
 		[A-Z][A-Z]) ;;
@@ -141,10 +145,10 @@ apply_country() {
 # otherwise a station.  Invalid values are reported and ignored.
 config_wifi() {
 	[ -f "$CFG" ] || return 0
-	w_ssid=$(conf_get wifi_ssid "$CFG" | sed -e 's/^"//' -e 's/"[ 	]*$//')
+	w_ssid=$(conf_get wifi_ssid "$CFG" "$UNQUOTE")
 	[ -n "$w_ssid" ] || return 0
-	w_psk=$(conf_get wifi_psk "$CFG" | sed -e 's/^"//' -e 's/"[ 	]*$//')
-	w_mode=$(conf_get wifi_mode "$CFG" | tr -d ' ')
+	w_psk=$(conf_get wifi_psk "$CFG" "$UNQUOTE")
+	w_mode=$(conf_get wifi_mode "$CFG" "$NOSPACE")
 	case "$w_ssid$w_psk" in
 		*'"'*|*'\'*)
 			echo "M3-lab: CONFIG ERROR: wifi_ssid/wifi_psk must not contain \" or \\; using $CONF"
@@ -166,7 +170,7 @@ config_wifi() {
 	# without PMF still connect.  Opt-in until tested with the C6 firmware.
 	w_akm=WPA-PSK
 	w_pmf=""
-	if [ "$(conf_get wifi_pmf "$CFG" | tr -d ' ')" = "1" ] && [ -n "$w_psk" ]; then
+	if [ "$(conf_get wifi_pmf "$CFG" "$NOSPACE")" = "1" ] && [ -n "$w_psk" ]; then
 		w_akm="WPA-PSK WPA-PSK-SHA256"
 		w_pmf=1
 	fi
@@ -197,20 +201,17 @@ config_wifi() {
 # overrides the pool; ntp_server=none disables it.
 sync_time() {
 	command -v ntpd >/dev/null 2>&1 || return 0
-	srv=$(conf_get ntp_server "$CFG" | tr -d ' ')
+	srv=$(conf_get ntp_server "$CFG" "$NOSPACE")
 	[ "$srv" = "none" ] && return 0
 	( ntpd -n -q -p "${srv:-pool.ntp.org}" >/dev/null 2>&1 &&
 		echo "M3-lab: clock set from NTP: $(date)" ) &
 }
 
-# udhcpd runs in the foreground under a respawn loop (#29): it comes back if
-# it dies, and -f keeps NOMMU udhcpd from re-execing itself as a daemon.
+# udhcpd runs in the foreground under easystick-respawn (#29): it comes back
+# if it dies, and -f keeps NOMMU udhcpd from re-execing itself as a daemon.
 UDHCPD_SUP=/run/.es-udhcpd-sup
 stop_udhcpd() {
-	if [ -f "$UDHCPD_SUP" ]; then
-		kill "$(cat "$UDHCPD_SUP")" 2>/dev/null || true
-		rm -f "$UDHCPD_SUP"
-	fi
+	stop_sup "$UDHCPD_SUP"
 	killall udhcpd 2>/dev/null || true
 }
 
@@ -221,7 +222,7 @@ start() {
 	# lab SSH shot does not depend on a manual `dmesg -n 1` over ttyGS1.
 	# debug=1 in config.txt raises the console to KERN_DEBUG for bring-up
 	# captures (#26); expect slower Wi-Fi/SSH while it is on.
-	if [ "$(conf_get debug /tmp/config.txt | tr -d ' ')" = "1" ]; then
+	if [ "$(conf_get debug /tmp/config.txt "$NOSPACE")" = "1" ]; then
 		echo "M3-lab: debug=1: console loglevel 8 (all kernel messages)"
 		dmesg -n 8 2>/dev/null || true
 	else
@@ -291,8 +292,8 @@ start() {
 
 	is_ap=0
 	if [ -f "$CFG" ]; then
-		cfg_mode=$(conf_get wifi_mode "$CFG" | tr -d ' ')
-		cfg_host=$(conf_get hostname "$CFG" | tr -d ' ')
+		cfg_mode=$(conf_get wifi_mode "$CFG" "$NOSPACE")
+		cfg_host=$(conf_get hostname "$CFG" "$NOSPACE")
 		if [ -n "$cfg_host" ]; then
 			hostname "$cfg_host" 2>/dev/null || true
 		fi
@@ -326,7 +327,7 @@ start() {
 				if command -v udhcpd >/dev/null 2>&1; then
 					mkdir -p /tmp /var/lib/misc
 					touch /tmp/udhcpd.leases
-					( while :; do udhcpd -f -S /etc/udhcpd.conf; sleep 2; done ) >/dev/null 2>&1 &
+					easystick-respawn -- udhcpd -f -S /etc/udhcpd.conf >/dev/null 2>&1 &
 					echo $! > "$UDHCPD_SUP"
 					echo "M3-lab: udhcpd started on wlan0 (192.168.4.1)"
 				else

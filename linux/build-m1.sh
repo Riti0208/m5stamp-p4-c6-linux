@@ -2049,6 +2049,8 @@ if $lab_profile; then
 	set_config_value "${br_output}/.config" BR2_PACKAGE_WIRELESS_REGDB y
 	# <hostname>.local (#25); mdnsd/avahi need fork().
 	set_config_value "${br_output}/.config" BR2_PACKAGE_EASYSTICK_MDNS y
+	# Respawn daemons without a resident BusyBox subshell each.
+	set_config_value "${br_output}/.config" BR2_PACKAGE_EASYSTICK_RESPAWN y
 else
 	set_config_value "${br_output}/.config" BR2_PACKAGE_EASYSTICK_BOOT_COMMIT "# BR2_PACKAGE_EASYSTICK_BOOT_COMMIT is not set"
 fi
@@ -2202,7 +2204,8 @@ if $ssh_profile; then
 		for expected in \
 			"BR2_PACKAGE_EASYSTICK_BOOT_COMMIT=y" \
 			"BR2_PACKAGE_WIRELESS_REGDB=y" \
-			"BR2_PACKAGE_EASYSTICK_MDNS=y"; do
+			"BR2_PACKAGE_EASYSTICK_MDNS=y" \
+			"BR2_PACKAGE_EASYSTICK_RESPAWN=y"; do
 			grep -Fqx -- "${expected}" "${br_output}/.config" || {
 				echo "m3-lab config check failed: ${expected}" >&2
 				exit 1

@@ -6,6 +6,7 @@ source "$BR2_EXTERNAL_EASYSTICK_STAMP_P4_PATH/package/m5stamp-smp-stress/Config.
 source "$BR2_EXTERNAL_EASYSTICK_STAMP_P4_PATH/package/micropython-nommu/Config.in"
 source "$BR2_EXTERNAL_EASYSTICK_STAMP_P4_PATH/package/easystick-boot-commit/Config.in"
 source "$BR2_EXTERNAL_EASYSTICK_STAMP_P4_PATH/package/easystick-mdns/Config.in"
+source "$BR2_EXTERNAL_EASYSTICK_STAMP_P4_PATH/package/easystick-respawn/Config.in"
 
 config BR2_PACKAGE_EASYSTICK_STAMP_P4_M1
 	bool "M1 minimal native Linux profile"

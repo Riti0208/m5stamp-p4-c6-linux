@@ -11,7 +11,10 @@ es_hk() {
 # BusyBox in this image has no pidof; scan /proc instead.
 inetd_running() {
 	for c in /proc/[0-9]*/comm; do
-		[ "$(cat "$c" 2>/dev/null)" = "inetd" ] && return 0
+		# read is a builtin: $(cat) would fork a ~500 KB BusyBox per process.
+		n=""
+		read -r n 2>/dev/null < "$c" || continue
+		[ "$n" = "inetd" ] && return 0
 	done
 	return 1
 }
@@ -94,7 +97,7 @@ start_locked() {
 			printf '%s\n' "M3-lab: starting password-enabled Dropbear on TCP/22"
 		fi
 		# Respawn inetd if it is ever killed (e.g. by the OOM killer).
-		( while :; do /usr/sbin/inetd -f -R 10 "$INETD_CONF"; sleep 2; done ) &
+		easystick-respawn -- /usr/sbin/inetd -f -R 10 "$INETD_CONF" &
 		echo $! > /tmp/.es-inetd-sup
 	else
 		es_hk "ES_HOSTKEY INETD_ALREADY"
@@ -112,7 +115,10 @@ case "${1:-start}" in
 	start) start ;;
 	restart|reload) restart ;;
 	stop)
-		[ -f /tmp/.es-inetd-sup ] && kill "$(cat /tmp/.es-inetd-sup)" 2>/dev/null || true
+		s=""
+		read -r s 2>/dev/null < /tmp/.es-inetd-sup || true
+		[ -n "$s" ] && kill "$s" 2>/dev/null || true
+		rm -f /tmp/.es-inetd-sup
 		killall inetd 2>/dev/null || true ;;
 	*) echo "Usage: $0 {start|stop|restart|reload}" >&2; exit 1 ;;
 esac
