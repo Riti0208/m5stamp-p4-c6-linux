@@ -103,19 +103,19 @@ apply_password() {
 		''|*:*) es_log "ES_CREDENTIALS: no usable password= in credentials.txt"; return 0 ;;
 	esac
 	if [ "${#pw}" -lt 8 ] || [ "${#pw}" -gt 64 ]; then
-		es_log "ES_CREDENTIALS: password= must be 8-64 characters; keeping the built-in password"
+		es_log "ES_CREDENTIALS: password= must be 8-64 characters; m5 password login stays disabled"
 		return 0
 	fi
 	hash=$(printf '%s\n' "$pw" | cryptpw -m sha512 2>/dev/null) || hash=""
 	case "$hash" in
 		'$6$'*) ;;
-		*) es_log "ES_CREDENTIALS FAIL: cryptpw unavailable; keeping the built-in password"; return 0 ;;
+		*) es_log "ES_CREDENTIALS FAIL: cryptpw unavailable; m5 password login stays disabled"; return 0 ;;
 	esac
 	if sed "s|^m5:[^:]*:|m5:${hash}:|" /etc/shadow > /run/shadow &&
 		chmod 600 /run/shadow && mount --bind /run/shadow /etc/shadow; then
 		es_log "ES_CREDENTIALS: m5 password applied from credentials.txt"
 	else
-		es_log "ES_CREDENTIALS FAIL: could not apply the password; keeping the built-in password"
+		es_log "ES_CREDENTIALS FAIL: could not apply the password; m5 password login stays disabled"
 	fi
 }
 

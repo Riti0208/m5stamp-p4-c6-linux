@@ -64,7 +64,8 @@ simultaneous connections; wait for stale connections to close or reboot. Root
 login is disabled; use the `m5` user with `password=` from `credentials.txt`
 (`/tmp/credentials.txt` as root on the serial console). Look for
 `ES_CREDENTIALS` lines: if the password was rejected or `cryptpw` failed, the
-built-in password `m5stamp-p4-c6` stays active. A power cycle before the first
+image has no built-in password, so password login for `m5` stays disabled
+(SSH keys from `authorized_keys` still work); fix `password=` and reboot. A power cycle before the first
 reboot regenerates the credentials; reboot once after first boot to save them.
 
 **The USB drive does not appear.** Look for `ES_USB_GADGET OK` on the console.
