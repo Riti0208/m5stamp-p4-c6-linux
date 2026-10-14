@@ -34,8 +34,9 @@ Set EASYSTICK_LEGAL_INFO=1 to also run Buildroot's legal-info into
 <vendor>/buildroot/legal-info (sources, patches and license texts, #31).  It
 does not change any image.
 Set EASYSTICK_PSTORE=1 with --profile m3-lab to reserve 64 KB of PSRAM for
-ramoops (kernel oops/panic and console tail, #26).  Whether PSRAM keeps it
-across a watchdog reset is not verified on hardware.
+ramoops (kernel oops/panic and console tail, #26).  On hardware the console
+record keeps the panic across both the panic=5 restart and a watchdog reset
+of a hung kernel; no dmesg-ramoops record has been seen yet.
 Set EASYSTICK_BUILDROOT_JLEVEL=1 to serialize nested Buildroot package makes.
 This is useful for BusyBox versions whose generated applet tables are not safe
 when install-noclobber is invoked in parallel.
@@ -108,7 +109,7 @@ case "${EASYSTICK_LAB_TOOLS:-1}" in
 		;;
 	*) echo "EASYSTICK_LAB_TOOLS must be 0 or 1" >&2; exit 2 ;;
 esac
-# ramoops in PSRAM (#26), opt-in until survival across a reset is measured.
+# ramoops in PSRAM (#26), opt-in: it costs 64 KB of RAM.
 pstore_identity=""
 case "${EASYSTICK_PSTORE:-0}" in
 	0) ;;
@@ -692,6 +693,11 @@ if $lab_profile; then
 		patches+=(0036-easystick-tcp22-bidirectional-ledger.patch)
 	fi
 fi
+# EASYSTICK_PSTORE=1: ramoops would vmap() its PSRAM buffer, which is BUG()
+# on NOMMU (#26).
+if [[ -n "$pstore_identity" ]]; then
+	patches+=(0065-easystick-pstore-ram-nommu.patch)
+fi
 # C67-L2-STAGE: observe-only SMP breadcrumbs in smpboot.c (no behaviour change).
 if [[ "${EASYSTICK_C67_SMP_STAGE:-0}" == "1" || "${EASYSTICK_C68_CLEAN_RELEASE:-0}" == "1" ]]; then
 	patches+=(0037-easystick-c67-l2-stage-smpboot.patch)
@@ -846,6 +852,7 @@ for patch_name in "${patches[@]}"; do
 	      "$patch_name" == 0058-easystick-wdt-beat-nocapsule.patch ||
 	      "$patch_name" == 0059-easystick-wdt-inject.patch ||
 	      "$patch_name" == 0064-easystick-wdt-restart-no-capsule.patch ||
+	      "$patch_name" == 0065-easystick-pstore-ram-nommu.patch ||
 	      "$patch_name" == 0056-easystick-wdt-stacktrace.patch ||
 	      "$patch_name" == 0055-easystick-sdio-clock-attest.patch ||
 	      "$patch_name" == 0060-easystick-dw-mmc-tx-software-dto.patch ||

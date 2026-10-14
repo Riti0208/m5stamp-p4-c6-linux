@@ -97,8 +97,10 @@ echo c > /proc/sysrq-trigger     # deliberate panic; sysrq is only in this image
 ```
 
 After the panic=5 reset, `ES_PSTORE OK` must report at least one record and
-`/sys/fs/pstore/dmesg-ramoops-0` must hold the panic.  Repeat with a
-watchdog reset (`EASYSTICK_WDT_TEST_*`) to learn whether PSRAM survives it.
+`/sys/fs/pstore/console-ramoops-0` must hold the panic and its call trace.
+Repeat after `echo 0 > /proc/sys/kernel/panic` so the kernel hangs and the
+watchdog resets the board; the record must survive that too (verified
+2026-10-14).  A `dmesg-ramoops-*` record has not been observed yet.
 
 ## 9. Record
 
