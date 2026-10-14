@@ -61,7 +61,7 @@ start_locked() {
 		# BusyBox wc may print leading spaces; strip them.
 		es_hk "ES_HOSTKEY GEN_BEGIN"
 		umask 077
-		TMPKEY="$KEY.$"
+		TMPKEY="$KEY.$$"
 		rm -f "$TMPKEY"
 		if ! dropbearkey -t ed25519 -f "$TMPKEY" >/dev/null 2>&1; then
 			rm -f "$TMPKEY"
