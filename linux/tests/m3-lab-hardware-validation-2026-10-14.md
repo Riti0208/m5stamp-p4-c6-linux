@@ -162,6 +162,13 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
 - **#21-1**: with the cap at 5 MHz, `ES_SDIO_CLOCK_HW ... actual_clock_hz=5000000`;
   cold boot 11/11 and reboot 12/12 PASS.  Throughput (`scp`) and the soak
   were not run (no Wi-Fi client attached), so the DTS default stays 400 kHz.
+- **#17 item 1 (`/tmp` cap, 895f450)** on candidate Y: `/dev/ram0 on /tmp
+  type ext2`, 1979 KB.  `dd` of 8 MB into `/tmp` stops with
+  `No space left on device` after 422 blocks (about 1.7 MB).  No OOM
+  appeared in dmesg, the SSH listener stayed up, and MemAvailable fell
+  from 6756 KB to 5452 KB.  Removing the file restored the original
+  283 KB used.  This ran as root, because the image has no `su`; the cap
+  does not depend on the user.
 - **First-boot OOM (#17, #29), 9210dc2**: three resident respawn
   subshells (about 500 KB of BusyBox each on NOMMU) made S40's `conf_get`
   pipelines fail on the first boot and print an empty SSID.  The new
