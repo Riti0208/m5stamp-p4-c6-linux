@@ -196,10 +196,23 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
       queued on or waits for CPU1, and CPU0 can spin on a lock CPU1
       holds (PREEMPT_NONE).  Sometimes the board resets via the MWDT, and
       sometimes it hangs silently.
-  - Consequence: SMP stays off (`maxcpus=1`, the shipping default).  A
-    software fix would have to avoid the latch's trigger.  Recovering is
-    not an option, because the deaf core cannot even read its CLIC
-    state, and why2025 found no recovery.
+  - **Workaround verified on hardware: keep userspace off CPU1.**
+    Candidate F (main, no 0068) with `maxcpus=2 isolcpus=1` (written in
+    place of `loglevel=4`): both CPUs online (`online=0-1`,
+    `isolated=1`).  17 boots: 0 RCU stalls and no MWDT reset other than
+    the reboots themselves.  Without isolation, stalls hit 4 of about 21
+    boots (about 19%), so 0 of 17 by chance has p ≈ 0.03.  One further
+    boot was soaked for 568 s and stayed responsive.  This supports the
+    syscall-side trigger above.  It does not identify the exact cycle
+    window.
+  - Consequence: the shipping default stays `maxcpus=1`.  With
+    `isolcpus=1`, CPU1 runs only per-CPU kernel threads.  0066 already
+    routes the shared IRQs to CPU0.  Turning SMP on that way gains almost
+    nothing.  It would also leave a latch that any `taskset` onto CPU1
+    could set off again, and it has not been tested under Wi-Fi load.
+    It remains a documented option for SMP experiments.  Recovering is
+    not an option: the deaf core cannot even read its own CLIC state,
+    and why2025 found no recovery.
   - `Core1 Saved PC` in the ROM banner is the assist_debug PC recorder,
     frozen at reset.  Without 0068, nothing enables it for core 1, so it
     shows the stale `0x4fc058e0` (the eco2 ROM getter for the APP CPU
