@@ -474,6 +474,14 @@ static void prepare_cpu1_c68_clean_release(void)
 		if ((esp_cpu_get_cycle_count() - start_cycles) > C68_CPU1_WAIT_CYCLES)
 			fatal_restart("C68 CPU1 never reached WAITING");
 	}
+	/*
+	 * #5: CPU1 is parked now.  Clear the ROM's APP CPU boot address so a
+	 * later reset of CPU1 (an MWDT system reset keeps this register) leaves
+	 * it in the ROM instead of re-entering the stale entry, finding GO still
+	 * set and jumping into uninitialised PSRAM, which the ROM reports as
+	 * "Guru Meditation Error: Core 1".
+	 */
+	ets_set_appcpu_boot_addr(0);
 	ets_printf("easystick-boot: C68 WAIT stage=1\n");
 	ESP_LOGI(TAG, "C68 CPU1 WAITING; CPU0 -> Linux");
 }
