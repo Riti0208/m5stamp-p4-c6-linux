@@ -143,6 +143,35 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
     CPU0, but CPU0 does not schedule it.  The board recovers and reaches
     login.  The stall dump printed no stack.  This is the remaining #5
     symptom, and its root cause is not known.
+  - The stall was then hunted on candidate Y, using SMP reboots with
+    `maxcpus=2`.  **In every stall the late CPU is CPU1, and CPU1 has
+    stopped taking interrupts while it keeps executing**:
+    - `1-...!: (0 ticks this GP) ... softirq=570/570`: no tick at all.
+    - `rcu_sched kthread timer wakeup didn't happen for 5251 jiffies! ... Possible timer handling issue on cpu=1`:
+      a timer queued on CPU1 never fired.
+    - At 21007 jiffies the GP kthread is in `->state=0x200`
+      (TASK_WAKING).  It is queued for CPU1, which never processes the
+      wake-up IPI.
+    - The RCU watching counter of CPU1 still changes between reports
+      (`97b4` → `6b8c`), so CPU1 is not halted.  It looks like an idle
+      loop whose `wfi` returns but never takes the pending interrupt.
+    - Another run: `1-...!: (2 GPs behind) ... softirq=630/630 fqs=0`,
+      then an MWDT reset.  A third run went fully silent with no MWDT
+      reset for more than 2 minutes, which is the original #5 report.
+  - This matches the CLIC interrupt-acceptance latch documented in the
+    vendored why2025-linux tree (`docs/KNOWN-ISSUES.md`,
+    `docs/RUNTIME-WEDGE.md`): a core stops accepting interrupts of any
+    level, and no software recovery was found.  That tree avoids its
+    known trigger (a privilege-dropping `mret`) by running userspace in
+    M-mode, which this kernel does too.  The hunt did not prove that CPU1
+    hits the same latch.  Doing so needs CPU1's CLIC state or PC at the
+    moment it goes deaf: JTAG, or a per-CPU tracer like why2025 patch 0025.
+  - Not useful for this: the ROM's `Core1 Saved PC` is `0x4fc058e0` after
+    every reset, healthy reboots included.  On this eco2 ROM that address
+    is the getter for the APP CPU boot address (`lw 0x50110164`), i.e. the
+    ROM's own CPU1 wait loop.  A shell watcher that read
+    `/proc/interrupts` through `$(...)` OOM-killed the console (the known
+    NOMMU limit).
 - **#26 pstore** (candidate G = D + `EASYSTICK_PSTORE=1`
   `EASYSTICK_SDIO_MAX_KHZ=5000`; candidate E, the same without 0065,
   panicked at boot with `kernel BUG at mm/nommu.c:311`):
