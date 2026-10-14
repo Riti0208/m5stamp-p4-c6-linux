@@ -90,11 +90,27 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
   `smp: Brought up 1 node, 2 CPUs`, userland runs up to `ES_SEEDRNG OK`,
   then the console prints `Guru Meditation Error: Core 1 pan` (the ESP-IDF
   panic handler of the boot-shim, not Linux) and the MWDT resets the chip
-  mid-line.  The ROM then reports `Core1 Saved PC:0x4ff0160a`, which is the
-  GO-poll loop in `c68_secondary_entry.S:27-28`.  The pstore console record
-  of the hung boot ends without any Linux oops.  So this time a CPU1 trap
-  reached the IDF vectors instead of Linux; the earlier run hung with no
-  reset at all.  Root cause not found.
+  mid-line.  The pstore console record of the hung boot ends without any
+  Linux oops.  (The ROM line `Core1 Saved PC:0x4ff0160a`, the GO-poll loop
+  in `c68_secondary_entry.S`, also appears after a normal UP boot, so it is
+  not evidence about the fault.)  The earlier run hung with no reset at all.
+  Things ruled out:
+  - The `ST_CONF`/`ST_INT_ENA` lock of 0045, which made the 2026-08-19 SMP
+    profile pass, is already folded into the current 0042 (`st_lock`).
+    0044/0045 no longer apply on top of it.
+  - The Type-A USB gadget.  The host enumerates it right before the stop
+    (`new device is full-speed`), but candidate J (H with the gadget
+    skipped when the command line has `es.nousb`; a staged test change
+    that was not committed) still fails with `maxcpus=2 es.nousb=1`: the
+    first boot gets past S40 (`ES_SDIO_LOAD_OK`) and then prints the same
+    `Guru Meditation Error: Core 1` before an MWDT reset.  The second boot
+    reaches `udhcpd started` and then reports
+    `rcu_sched kthread starved for 5250 jiffies! ... ->state=0x0 ->cpu=0`:
+    the RCU kthread is runnable on CPU0 but never runs.
+  The fault follows interrupt/DMA load (USB, then SDIO/Wi-Fi), not a fixed
+  init step.  The SMP profile that passed in August had neither USB gadget
+  nor Wi-Fi.  A lost cross-CPU wakeup (IPI) is the leading suspect; it is
+  not proven.  Root cause not found.
 - **#26 pstore** (candidate G = D + `EASYSTICK_PSTORE=1`
   `EASYSTICK_SDIO_MAX_KHZ=5000`; candidate E, the same without 0065,
   panicked at boot with `kernel BUG at mm/nommu.c:311`):
@@ -118,11 +134,12 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
   (b89fcbb now dircleans linux when the staged series changes).
 
 Flashing E/G rewrote the boot partition from the template, so the board
-generated new credentials (SSID `m5-F314`, then `m5-4D54` after H; see credentials.txt on the USB
-drive).
+generated new credentials (SSID `m5-F314`, then `m5-4D54` after H and
+`m5-73D7` after J; see credentials.txt on the USB drive).
 
 ## Board state at the end of the session
 
-Running candidate H (pstore + 5 MHz SDIO test image), SoftAP SSID `m5-4D54`
-at 192.168.4.1.  The backup
+Running candidate J (H plus the inert `es.nousb` test gate) with the
+normal `maxcpus=1` DTB, 11/11 PASS; SoftAP SSID `m5-73D7` at 192.168.4.1.
+The backup
 above restores the original image.
