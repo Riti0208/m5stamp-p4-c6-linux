@@ -158,20 +158,55 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
     - Another run: `1-...!: (2 GPs behind) ... softirq=630/630 fqs=0`,
       then an MWDT reset.  A third run went fully silent with no MWDT
       reset for more than 2 minutes, which is the original #5 report.
-  - This matches the CLIC interrupt-acceptance latch documented in the
-    vendored why2025-linux tree (`docs/KNOWN-ISSUES.md`,
-    `docs/RUNTIME-WEDGE.md`): a core stops accepting interrupts of any
-    level, and no software recovery was found.  That tree avoids its
-    known trigger (a privilege-dropping `mret`) by running userspace in
-    M-mode, which this kernel does too.  The hunt did not prove that CPU1
-    hits the same latch.  Doing so needs CPU1's CLIC state or PC at the
-    moment it goes deaf: JTAG, or a per-CPU tracer like why2025 patch 0025.
-  - Not useful for this: the ROM's `Core1 Saved PC` is `0x4fc058e0` after
-    every reset, healthy reboots included.  On this eco2 ROM that address
-    is the getter for the APP CPU boot address (`lw 0x50110164`), i.e. the
-    ROM's own CPU1 wait loop.  A shell watcher that read
-    `/proc/interrupts` through `$(...)` OOM-killed the console (the known
-    NOMMU limit).
+  - **Root cause, at register level (2026-10-15, opt-in patch 0068,
+    `EASYSTICK_C68_DEAF_TRACE=1`, candidates Z2–Z4):** CPU1's CLIC stops
+    delivering interrupts that are pending, enabled and above threshold.
+    This is the CLIC interrupt-acceptance latch documented in the vendored
+    why2025-linux tree (`docs/KNOWN-ISSUES.md`, `docs/RUNTIME-WEDGE.md`),
+    there seen on a single core and with no software recovery.  The
+    ES_DEAF0 report caught four stalls in about 21 SMP boots (Z2, Z3,
+    Z4, and one `nohlt` boot), and all four show the same state:
+    - Routing is correct: INTMTX1 sends source 54 (CPU1 timer) to slot 23
+      and source 80 (IPI) to slot 20, and INTMTX0 does not route either.
+      SYSTIMER target 1 is raised (`st_raw=st_st=3`).  The IPI register
+      stays at 1, and 200 ms after an extra IPI CPU1 has still not ticked.
+    - CPU1's own record (Z4): CLIC slots 20 and 23 are both `ffc00101`
+      (IP=1, IE=1, level 0xFF), the CLIC threshold is 0, and
+      `mstatus=00001880`.  In just over a second CPU1 entered
+      `arch_cpu_idle` 956397 times: `wfi` returns at once because an
+      interrupt is pending, the idle loop re-enables MIE, and the
+      interrupt is still not taken.
+    - On the deaf CPU1, reading the CLIC CSRs `mintstatus` (0xfb1, Z3)
+      or `mintthresh` (0x347, Z4) stops the core for good.  The
+      assist_debug PC recorder then holds that one `csrr` (Z3
+      `arch_cpu_idle+0x60`, Z4 `+0x146`) with SP unchanged.  The record
+      reads them last for that reason.
+    - It does not depend on `wfi`.  With `nohlt` (polling idle) one of
+      8 boots stalled the same way, with CPU1 in `rwsem_spin_on_owner`.
+      Its PC still moved, but it took no tick and no IPI.
+    - The last trap CPU1 took before going deaf was a system call from
+      userspace: `mcause=3800000b` (ecall, `mpil=0`) in Z4, and
+      `LASTPC_BEFORE_EXCEPTION` in userspace (`0x49c24026`) in the
+      `nohlt` stall.  why2025 avoids its trigger (an interrupt racing a
+      privilege-dropping `mret`) by running userspace in M-mode, and
+      this kernel does too (`mstatus.MPP=M` above).  So on CPU1 the latch
+      has another trigger, apparently near the syscall entry/exit.  That
+      is inferred from two captures, not proven.
+    - The stall messages on CPU0 follow from this: the GP kthread is
+      queued on or waits for CPU1, and CPU0 can spin on a lock CPU1
+      holds (PREEMPT_NONE).  Sometimes the board resets via the MWDT, and
+      sometimes it hangs silently.
+  - Consequence: SMP stays off (`maxcpus=1`, the shipping default).  A
+    software fix would have to avoid the latch's trigger.  Recovering is
+    not an option, because the deaf core cannot even read its CLIC
+    state, and why2025 found no recovery.
+  - `Core1 Saved PC` in the ROM banner is the assist_debug PC recorder,
+    frozen at reset.  Without 0068, nothing enables it for core 1, so it
+    shows the stale `0x4fc058e0` (the eco2 ROM getter for the APP CPU
+    boot address, `lw 0x50110164`) after every reset.  With 0068 it
+    shows CPU1's real PC at the reset (e.g. `arch_cpu_idle+0x146`).
+    A shell watcher that read `/proc/interrupts` through `$(...)`
+    OOM-killed the console (the known NOMMU limit).
 - **#26 pstore** (candidate G = D + `EASYSTICK_PSTORE=1`
   `EASYSTICK_SDIO_MAX_KHZ=5000`; candidate E, the same without 0065,
   panicked at boot with `kernel BUG at mm/nommu.c:311`):
