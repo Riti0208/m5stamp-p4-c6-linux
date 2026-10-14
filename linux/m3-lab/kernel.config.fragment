@@ -28,5 +28,8 @@ CONFIG_BLK_DEV_RAM=y
 CONFIG_BLK_DEV_RAM_COUNT=1
 CONFIG_BLK_DEV_RAM_SIZE=2048
 CONFIG_EXT2_FS=y
+# The overlay upper dirs live on that ext2 /tmp; without xattrs overlayfs
+# cannot store trusted.overlay.* (opaque dirs, whiteouts) and warns (#12).
+CONFIG_EXT2_FS_XATTR=y
 # Multicast receive for the mDNS responder (#25).
 CONFIG_IP_MULTICAST=y
