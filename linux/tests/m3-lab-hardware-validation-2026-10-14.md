@@ -73,7 +73,7 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
   ramfs: `size=4M` is ignored and `df /tmp` reports 0.  An 8 MB fill would
   OOM the board.  The dead config lines and the step were corrected in
   9b7a6cf.  #17 item 1 remains open (a brd+ext2 /tmp is one option).
-- Steps 4, 6 (24 h soak), 7, 8 (pstore): not run in this session.
+- Steps 4, 6 (24 h soak), 7: not run.  Step 8 (pstore): see below.
 
 ## Issue re-checks on hardware (candidate D unless noted)
 
@@ -92,8 +92,8 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
   - `echo c > /proc/sysrq-trigger`: reset via MWDT, then
     `ES_PSTORE OK: 1 record(s)`; `console-ramoops-0` holds the panic and
     call trace.
-  - `panic=0` + sysrq: the kernel hangs, the MWDT resets the board after
-    a few minutes, and the record survives.  PSRAM keeps ramoops across a
+  - `panic=0` + sysrq: the kernel hangs, the MWDT resets the board within the
+    7-minute capture window, and the record survives.  PSRAM keeps ramoops across a
     watchdog reset.
   - No `dmesg-ramoops-*` record appears; the console record is the only one.
 - **#21-1**: with the cap at 5 MHz, `ES_SDIO_CLOCK_HW ... actual_clock_hz=5000000`;
