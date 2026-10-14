@@ -250,8 +250,9 @@ generated new credentials (SSID `m5-F314`, then `m5-4D54` after H and
 
 ## Board state at the end of the session
 
-Running candidate Y (main with 0066/0067, 9210dc2 and the boot-address
-fix) with the normal `maxcpus=1` DTB, 11/11 PASS; SoftAP at 192.168.4.1
+Running candidate F (main at 2ed8648 built without
+`EASYSTICK_C68_DEAF_TRACE`, so the same kernel as candidate Y) with the
+normal `maxcpus=1` DTB, 11/11 PASS; SoftAP at 192.168.4.1
 (credentials in credentials.txt on the USB drive).
 The backup
 above restores the original image.
