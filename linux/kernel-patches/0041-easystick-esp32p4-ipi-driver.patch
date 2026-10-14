@@ -2,7 +2,7 @@ diff --git a/drivers/irqchip/irq-esp32p4-ipi.c b/drivers/irqchip/irq-esp32p4-ipi
 new file mode 100644
 --- /dev/null
 +++ b/drivers/irqchip/irq-esp32p4-ipi.c
-@@ -0,0 +1,145 @@
+@@ -0,0 +1,153 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * ESP32-P4 HP-core cross-core IPI provider.
@@ -57,10 +57,18 @@ new file mode 100644
 +{
 +	unsigned int cpu = smp_processor_id();
 +
-+	if (cpu < ESP32P4_IPI_NR_CPUS)
++	if (cpu < ESP32P4_IPI_NR_CPUS) {
 +		writel(0, esp32p4_ipi_base + esp32p4_ipi_reg(cpu));
-+	else
++		/*
++		 * writel() has no trailing fence.  Read the register back so the
++		 * clear has landed before ipi_mux_process() samples the pending
++		 * bits; otherwise a late clear can wipe the other CPU's next
++		 * request and that IPI is lost (#5).
++		 */
++		readl(esp32p4_ipi_base + esp32p4_ipi_reg(cpu));
++	} else {
 +		pr_warn_ratelimited("interrupt on unsupported CPU%u\n", cpu);
++	}
 +
 +	ipi_mux_process();
 +	return IRQ_HANDLED;
