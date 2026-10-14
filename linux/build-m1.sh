@@ -2098,6 +2098,15 @@ if [[ "${EASYSTICK_CMD53_RETENTION_BB:-0}" == "1" ]]; then
 	# retention BB always discards the kernel build directory.
 	make "${make_args[@]}" linux-dirclean
 fi
+# Buildroot applies kernel patches only at extract time.  A reused
+# linux-custom tree would silently keep the previous series when a patch is
+# added, removed or edited, so discard it whenever the staged series changes.
+kernel_patch_sum=$(cd "$patch_stage" && sha256sum -- * | sha256sum | cut -d' ' -f1)
+kernel_patch_stamp="${br_output}/.easystick-kernel-patches.sha256"
+if [[ "$(cat "$kernel_patch_stamp" 2>/dev/null)" != "$kernel_patch_sum" ]]; then
+	make "${make_args[@]}" linux-dirclean
+	echo "$kernel_patch_sum" >"$kernel_patch_stamp"
+fi
 if [[ "${EASYSTICK_LINUX_ONLY:-0}" == "1" ]]; then
 	make "${make_args[@]}" linux-dirclean
 	make "${make_args[@]}" linux
