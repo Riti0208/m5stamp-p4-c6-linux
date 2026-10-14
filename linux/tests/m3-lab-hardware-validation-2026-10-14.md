@@ -86,6 +86,15 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
   stops after `ES_DWC2_STATUS` as reported, then the board stayed silent
   for more than 11 minutes with **no watchdog reset** and the ACM console
   did not answer.  Recovered by re-flashing the original DTB.  Not fixed.
+  Repeated on H with `maxcpus=2 loglevel=8` (same DTB length):
+  `smp: Brought up 1 node, 2 CPUs`, userland runs up to `ES_SEEDRNG OK`,
+  then the console prints `Guru Meditation Error: Core 1 pan` (the ESP-IDF
+  panic handler of the boot-shim, not Linux) and the MWDT resets the chip
+  mid-line.  The ROM then reports `Core1 Saved PC:0x4ff0160a`, which is the
+  GO-poll loop in `c68_secondary_entry.S:27-28`.  The pstore console record
+  of the hung boot ends without any Linux oops.  So this time a CPU1 trap
+  reached the IDF vectors instead of Linux; the earlier run hung with no
+  reset at all.  Root cause not found.
 - **#26 pstore** (candidate G = D + `EASYSTICK_PSTORE=1`
   `EASYSTICK_SDIO_MAX_KHZ=5000`; candidate E, the same without 0065,
   panicked at boot with `kernel BUG at mm/nommu.c:311`):
