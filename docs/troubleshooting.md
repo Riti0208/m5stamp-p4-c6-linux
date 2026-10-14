@@ -58,6 +58,10 @@ or `wpa_supplicant.conf` has no `mode=2`, the board starts as a station instead.
 board falls back to the built-in AP configuration (SSID `m5`, passphrase
 `m5stamp-p4-c6`) and logs
 `wpa_supplicant failed with ...`. If DHCP fails the status is `DHCP_FAILED`.
+If the board never associates, `/run/easystick-status.txt` and the console
+(`wlan0 did not associate (...)`) say `SSID_NOT_FOUND` when the network was not
+seen in any scan (wrong SSID, out of range, 5 GHz only) and `AUTH_FAILED` when
+it was seen but the connection failed (usually a wrong PSK).
 
 **Cannot log in over SSH.** The SSH server runs from inetd with at most three
 simultaneous connections; wait for stale connections to close or reboot. Root

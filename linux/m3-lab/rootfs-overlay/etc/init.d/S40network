@@ -368,9 +368,16 @@ start() {
 			echo "M3-lab: wlan0 link status after timeout"
 			iw dev wlan0 link 2>/dev/null || true
 			ifconfig wlan0 2>/dev/null || true
-			echo "M3-lab: wlan0 did not associate"
 			sta_ssid=$(conf_ssid "$CONF")
-			[ -x /usr/sbin/easystick-update-status ] && /usr/sbin/easystick-update-status "DISCONNECTED" "none" "none" "none" "${sta_ssid:-none}" "sta" &
+			# wpa_supplicant's scans fill the cfg80211 cache: an SSID that is
+			# there but never associated points at the PSK (#25).
+			sta_state=SSID_NOT_FOUND
+			if [ -n "$sta_ssid" ] && iw dev wlan0 scan dump 2>/dev/null |
+				grep -Fqx "	SSID: $sta_ssid"; then
+				sta_state=AUTH_FAILED
+			fi
+			echo "M3-lab: wlan0 did not associate ($sta_state)"
+			[ -x /usr/sbin/easystick-update-status ] && /usr/sbin/easystick-update-status "$sta_state" "none" "none" "none" "${sta_ssid:-none}" "sta" &
 			return 0
 		fi
 		i=$((i + 1))
