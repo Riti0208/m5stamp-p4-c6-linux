@@ -94,8 +94,9 @@ The capsule holds only registers. For the kernel log of the crashed boot,
 build a test image with `EASYSTICK_PSTORE=1` (m3-lab only). It keeps an oops
 or panic and the console tail in 64 KB of reserved PSRAM; after the reset,
 as root, read `/sys/fs/pstore/` (`ES_PSTORE OK: N record(s)` on the console).
-Whether PSRAM keeps its contents across a watchdog reset has not been
-checked on hardware yet, so an empty directory does not rule out a crash.
+On hardware the record survived both a sysrq panic and a `panic=0` hang that
+the watchdog reset (`linux/tests/m3-lab-hardware-validation-2026-10-14.md`,
+"#26 pstore"). A power cycle clears PSRAM, so read it before unplugging.
 
 ## Backup and recovery
 
