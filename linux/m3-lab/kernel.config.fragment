@@ -21,6 +21,12 @@ CONFIG_NLS_ISO8859_1=y
 
 # SHMEM depends on MMU, so on this NOMMU kernel "tmpfs" is always ramfs:
 # size= is ignored and /tmp, /run are uncapped (#17).  SHMEM and TMPFS_XATTR
-# used to be set here; Kconfig silently dropped both.
+# used to be set here; Kconfig silently dropped both.  /tmp is therefore an
+# ext2 filesystem on a 2 MB brd ramdisk instead: brd allocates pages only
+# when they are written, and the device size caps what /tmp can pin.
+CONFIG_BLK_DEV_RAM=y
+CONFIG_BLK_DEV_RAM_COUNT=1
+CONFIG_BLK_DEV_RAM_SIZE=2048
+CONFIG_EXT2_FS=y
 # Multicast receive for the mDNS responder (#25).
 CONFIG_IP_MULTICAST=y

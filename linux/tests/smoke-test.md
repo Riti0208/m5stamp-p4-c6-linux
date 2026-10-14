@@ -60,18 +60,23 @@ killall udhcpd;  sleep 5; ps | grep udhcpd                 # SoftAP only
 killall wpa_supplicant; sleep 10; ps | grep wpa_supplicant
 ```
 
-## 5. /tmp cannot take the console down (#17) - OPEN
+## 5. /tmp cannot take the console down (#17)
 
-On this NOMMU kernel `CONFIG_SHMEM` cannot be enabled, so `tmpfs` is ramfs:
-the `size=4M` mount option is ignored and `df /tmp` reports 0.  Writing a
-large file to /tmp consumes system RAM until the OOM killer runs
-(MemAvailable is about 6 MB on a 20 MB board).  **Do not run a fill test
-until /tmp has a real cap** (for example a brd ramdisk with ext2).
+`CONFIG_SHMEM` cannot be enabled on this NOMMU kernel (tmpfs is ramfs and
+ignores `size=`), so S05 puts /tmp on ext2 on the 2 MB brd ramdisk.  The boot
+log must show `ES_TMPFS OK: ext2 on /dev/ram0`; the ramfs fallback logs
+`ES_TMPFS FAIL` and fails `check-boot-log.py`.
 
 ```sh
-mount | grep -E ' /tmp | /run '           # shows tmpfs, but behaves as ramfs
+df /tmp                                   # /dev/ram0, about 1979 1K-blocks
 grep MemAvailable /proc/meminfo
+dd if=/dev/zero of=/tmp/fill bs=4096 count=1024   # must stop with ENOSPC
+grep MemAvailable /proc/meminfo
+rm /tmp/fill; netstat -ltn | grep ':22 '  # still listening
 ```
+
+brd does not free pages when a file is deleted, so a full /tmp keeps about
+2 MB pinned; a second fill must not lower MemAvailable further.
 
 ## 6. Soak
 

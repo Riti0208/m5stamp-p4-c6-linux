@@ -137,9 +137,17 @@ install_keys() {
 start() {
 	es_log "ES_TMPFS BEGIN"
 	mkdir -p /tmp 2>/dev/null || true
-	# NOMMU: tmpfs is ramfs here, so size= below is not enforced (#17).
-	mount -t tmpfs -o mode=1777,size=4M tmpfs /tmp 2>/dev/null || true
-	es_log "ES_TMPFS OK"
+	# NOMMU: tmpfs is ramfs here and ignores size=, so /tmp is ext2 on the
+	# 2 MB brd ramdisk to give it a hard cap (#17).  ramfs is the fallback.
+	if mke2fs -q -m 0 -i 4096 /dev/ram0 >/dev/null 2>&1 &&
+	   mount -t ext2 /dev/ram0 /tmp 2>/dev/null; then
+		chmod 1777 /tmp
+		rmdir /tmp/lost+found 2>/dev/null || true
+		es_log "ES_TMPFS OK: ext2 on /dev/ram0"
+	else
+		mount -t tmpfs -o mode=1777 tmpfs /tmp 2>/dev/null || true
+		es_log "ES_TMPFS FAIL: no /dev/ram0 ext2, /tmp is uncapped ramfs"
+	fi
 
 	# /run (= /var/run) lives on the read-only squashfs; wpa_supplicant
 	# ctrl_interface, PID files and /etc/dropbear need it writable.
