@@ -87,6 +87,15 @@ case "$profile" in
 	m3-lab) network_profile=true; ssh_profile=true; lab_profile=true ;;
 	*) echo "unsupported profile: $profile" >&2; exit 2 ;;
 esac
+# m3-lab is the release profile, so it defaults to the SDIO transport the
+# shipped v0.2.1 image was validated with: IDMAC DMA with the noncoherent
+# descriptor ring.  With the PIO default the C6 boot-up event arrives garbled
+# ("read_packet: Drop invalid pkt") and wlan0 never appears.  An explicit
+# value in the environment still wins.
+if $lab_profile; then
+	: "${EASYSTICK_SDIO_FORCE_PIO:=0}"
+	: "${EASYSTICK_IDMAC_NONCOHERENT_RING:=1}"
+fi
 # Bring-up tools in m3-lab (#32).  Only lab-tools=0 enters the profile
 # identity, so default builds keep their stamp and are not cleaned.
 lab_tools=false
@@ -717,9 +726,10 @@ fi
 if $network_profile; then
 	patches+=(0002-gpio-esp32p4.patch)
 	patches+=(0007-mmc-dw_mmc-esp32p4-fixes.patch)
-	# PIO is the conservative default while the NOMMU DMA ring is under
-	# validation.  Set EASYSTICK_SDIO_FORCE_PIO=0 for the board-side DMA
-	# comparison; all other transport patches remain identical.
+	# PIO is the default for m2/m3 while the NOMMU DMA ring is under
+	# validation; m3-lab defaults to DMA (see the profile block above).  Set
+	# EASYSTICK_SDIO_FORCE_PIO=0 for the board-side DMA comparison; all other
+	# transport patches remain identical.
 	if [[ "${EASYSTICK_SDIO_FORCE_PIO:-1}" != "0" ]]; then
 		patches+=(0008-easystick-dw-mmc-force-pio.patch)
 	fi
