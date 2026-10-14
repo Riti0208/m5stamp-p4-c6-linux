@@ -169,6 +169,9 @@ start() {
 	echo 1 > /proc/sys/kernel/dmesg_restrict 2>/dev/null || true
 	echo 1 > /proc/sys/kernel/kptr_restrict 2>/dev/null || true
 	echo 1 > /proc/sys/kernel/panic_on_oops 2>/dev/null || true
+	# vm.overcommit_memory stays 0 (#16): NOMMU backs every mapping with real
+	# pages when it is made, so nothing is overcommitted, and mode 2 would cap
+	# commitments at half of RAM and refuse ordinary allocations.
 
 	# Clock floor: with no RTC the time starts at 1970.  Use the build time so
 	# certificates and file times are at least plausible until NTP exists.
