@@ -711,6 +711,10 @@ if [[ "${EASYSTICK_C68_CLEAN_RELEASE:-0}" == "1" ]]; then
 	patches+=(0042-easystick-esp32p4-systimer-cpu1.patch)
 	patches+=(0066-easystick-esp32p4-clic-smp-routing.patch)
 	patches+=(0067-easystick-esp32p4-cache-sync-smp-lock.patch)
+	# #5 diagnostic: report a CPU that stops taking interrupts (ES_DEAF).
+	if [[ "${EASYSTICK_C68_DEAF_TRACE:-0}" == "1" ]]; then
+		patches+=(0068-easystick-esp32p4-deaf-cpu-trace.patch)
+	fi
 	if [[ "${EASYSTICK_C68_TIMER_OBSERVE:-0}" == "1" ]]; then
 		patches+=(0044-easystick-esp32p4-systimer-observe-cpu1.patch)
 	fi
@@ -857,6 +861,7 @@ for patch_name in "${patches[@]}"; do
 	      "$patch_name" == 0065-easystick-pstore-ram-nommu.patch ||
 	      "$patch_name" == 0066-easystick-esp32p4-clic-smp-routing.patch ||
 	      "$patch_name" == 0067-easystick-esp32p4-cache-sync-smp-lock.patch ||
+	      "$patch_name" == 0068-easystick-esp32p4-deaf-cpu-trace.patch ||
 	      "$patch_name" == 0056-easystick-wdt-stacktrace.patch ||
 	      "$patch_name" == 0055-easystick-sdio-clock-attest.patch ||
 	      "$patch_name" == 0060-easystick-dw-mmc-tx-software-dto.patch ||
