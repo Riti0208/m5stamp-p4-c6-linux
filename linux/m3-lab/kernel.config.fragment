@@ -19,9 +19,8 @@ CONFIG_NLS_DEFAULT="iso8859-1"
 CONFIG_NLS_CODEPAGE_437=y
 CONFIG_NLS_ISO8859_1=y
 
-# overlayfs on tmpfs needs xattr support (opaque dirs / redirects)
-CONFIG_TMPFS_XATTR=y
-# Real tmpfs so size= is honoured; with SHMEM=n /tmp is an unbounded ramfs.
-CONFIG_SHMEM=y
+# SHMEM depends on MMU, so on this NOMMU kernel "tmpfs" is always ramfs:
+# size= is ignored and /tmp, /run are uncapped (#17).  SHMEM and TMPFS_XATTR
+# used to be set here; Kconfig silently dropped both.
 # Multicast receive for the mDNS responder (#25).
 CONFIG_IP_MULTICAST=y

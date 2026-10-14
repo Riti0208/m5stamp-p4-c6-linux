@@ -60,16 +60,18 @@ killall udhcpd;  sleep 5; ps | grep udhcpd                 # SoftAP only
 killall wpa_supplicant; sleep 10; ps | grep wpa_supplicant
 ```
 
-## 5. /tmp cannot take the console down (#17)
+## 5. /tmp cannot take the console down (#17) - OPEN
+
+On this NOMMU kernel `CONFIG_SHMEM` cannot be enabled, so `tmpfs` is ramfs:
+the `size=4M` mount option is ignored and `df /tmp` reports 0.  Writing a
+large file to /tmp consumes system RAM until the OOM killer runs
+(MemAvailable is about 6 MB on a 20 MB board).  **Do not run a fill test
+until /tmp has a real cap** (for example a brd ramdisk with ext2).
 
 ```sh
-df /tmp                                   # tmpfs with a 4 MB limit
-dd if=/dev/zero of=/tmp/fill bs=4096 count=2048   # stops at ENOSPC
-grep MemAvailable /proc/meminfo           # still well above 0
-rm /tmp/fill
+mount | grep -E ' /tmp | /run '           # shows tmpfs, but behaves as ramfs
+grep MemAvailable /proc/meminfo
 ```
-
-The console and an open SSH session must stay alive.
 
 ## 6. Soak
 

@@ -137,6 +137,7 @@ install_keys() {
 start() {
 	es_log "ES_TMPFS BEGIN"
 	mkdir -p /tmp 2>/dev/null || true
+	# NOMMU: tmpfs is ramfs here, so size= below is not enforced (#17).
 	mount -t tmpfs -o mode=1777,size=4M tmpfs /tmp 2>/dev/null || true
 	es_log "ES_TMPFS OK"
 
