@@ -178,13 +178,13 @@ static bool generation_is_newer(uint32_t candidate, uint32_t current)
 	return (int32_t)(candidate - current) > 0;
 }
 
-static void clear_boot_update_request(void)
+static void set_boot_update_request(uint32_t commit_word)
 {
 	volatile struct boot_update_request *request =
 		(volatile struct boot_update_request *)(uintptr_t)BOOT_UPDATE_REQUEST_PA;
 
-	/* Clearing the commit field first makes any torn clear safely invalid. */
-	request->commit_word = 0;
+	/* Only commit_word changes, so any value but COMMIT stays invalid. */
+	request->commit_word = commit_word;
 	cache_hal_writeback_addr(BOOT_UPDATE_REQUEST_PA,
 				 sizeof(*request));
 	cache_hal_invalidate_addr(BOOT_UPDATE_REQUEST_PA,
@@ -278,7 +278,7 @@ static const esp_partition_t *select_boot_partition(void)
 				  active_crc == request.image_crc32;
 		if (same_image) {
 			ESP_LOGI(TAG, "boot update already active; clearing request");
-			clear_boot_update_request();
+			set_boot_update_request(0);
 		} else if (slots[1u - selected_slot] &&
 			   slots[1u - selected_slot]->size >= BOOT_IMAGE_BYTES) {
 			uint32_t inactive_slot = 1u - selected_slot;
@@ -314,13 +314,15 @@ static const esp_partition_t *select_boot_partition(void)
 				ESP_LOGE(TAG, "boot update failed; retaining active slot=%" PRIu32,
 					 selected_slot);
 				/* Drop the request so a failed update is not retried against a
-				 * PSRAM image that is about to be overwritten by the active slot. */
-				clear_boot_update_request();
+				 * PSRAM image that is about to be overwritten by the active slot,
+				 * and leave FAIL for Linux to report. */
+				set_boot_update_request(BOOT_REQUEST_FAILED);
 				return slots[selected_slot];
 			}
-			clear_boot_update_request();
+			set_boot_update_request(0);
 		} else {
 			ESP_LOGE(TAG, "boot update cannot proceed; inactive slot missing");
+			set_boot_update_request(BOOT_REQUEST_FAILED);
 			return slots[selected_slot];
 		}
 	}

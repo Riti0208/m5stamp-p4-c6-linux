@@ -256,6 +256,19 @@ start() {
 		mount --bind /tmp/boot /boot 2>/dev/null || true
 	fi
 
+	# The boot shim leaves "FAIL" in the update request when it could not
+	# write the last USB drive changes to flash (#13).  Say so on the console
+	# and on the drive, then clear the marker.
+	if [ "$(devmem 0x499bf000 32 2>/dev/null)" = 0x45534243 ] &&
+		[ "$(devmem 0x499bf010 32 2>/dev/null)" = 0x4641494C ]; then
+		es_log "ES_BOOT_UPDATE FAIL: the last USB drive changes could not be saved to flash; the drive shows the previous contents"
+		printf '%s\r\n' "The last changes to this drive could not be saved to flash." \
+			"The drive shows the previous contents. Make the changes again," \
+			"safe-eject and reboot. Delete this file when done." \
+			> /boot/UPDATE-FAILED.txt 2>/dev/null || true
+		devmem 0x499bf010 32 0 2>/dev/null || true
+	fi
+
 	# Factory reset (#32): an empty file named factory-reset on the USB drive
 	# restores the shipped template, so the code below generates new
 	# credentials and the reset image is committed at the next reboot.

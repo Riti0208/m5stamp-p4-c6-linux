@@ -11,6 +11,9 @@
 #define BOOT_REQUEST_MAGIC        0x45534243u /* "ESBC" */
 #define BOOT_REQUEST_VERSION      1u
 #define BOOT_REQUEST_COMMIT       0x434f4d4du /* "COMM" */
+/* Left in commit_word by the boot shim when it could not commit a request;
+ * Linux reports it on the console and USB drive, then clears it (#13). */
+#define BOOT_REQUEST_FAILED       0x4641494cu /* "FAIL" */
 
 /* A committed metadata sector identifies a fully read-back-verified image.
  * The record checksum deliberately excludes commit_word; bootmeta sectors are
