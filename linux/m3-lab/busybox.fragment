@@ -3,6 +3,9 @@
 CONFIG_INETD=y
 CONFIG_PASSWD=y
 CONFIG_MODPROBE=y
+# S05 passes file=/removable=/iSerialNumber= to g_mass_storage on the
+# modprobe command line; busybox-minimal drops them without this.
+CONFIG_FEATURE_CMDLINE_MODULE_OPTIONS=y
 CONFIG_INSMOD=y
 CONFIG_LSMOD=y
 CONFIG_RMMOD=y

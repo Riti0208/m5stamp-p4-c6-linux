@@ -328,7 +328,7 @@ EOF
 	# Start USB Mass Storage Gadget on Full-Speed DWC2 (Type-A port)
 	if [ -f /tmp/boot.img ]; then
 		es_log "ES_USB_GADGET STARTING"
-		USB_SERIAL=$(tr -d : < /sys/class/net/wlan0/address 2>/dev/null || true)
+		USB_SERIAL=$(tr -d : 2>/dev/null < /sys/class/net/wlan0/address || true)
 		if [ -z "$USB_SERIAL" ]; then
 			USB_SERIAL=$(sed -n 's/^device_id=\([0-9A-F]*\).*/EASYSTICK\1/p' /tmp/credentials.txt 2>/dev/null | head -n1)
 		fi
