@@ -75,7 +75,39 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
   9b7a6cf.  #17 item 1 remains open (a brd+ext2 /tmp is one option).
 - Steps 4, 6 (24 h soak), 7, 8 (pstore): not run in this session.
 
+## Issue re-checks on hardware (candidate D unless noted)
+
+- **#15**: load average 0.00, no task in D state.  Over 60 s idle the
+  busy delta in `/proc/stat` was 1 tick of 6000 (about 0.02 %; v0.2.1 7.2 %).
+- **#19**: `reboot` still resets through the MWDT (`rst:0x7`) but writes no
+  CRASH_CAPSULE (`check-boot-log.py --after-reboot` PASS on B and G).  The
+  0059 injector is not in the lab image (`/sys/module/esp32p4_wdt` absent).
+- **#5**: DTB `maxcpus=1` patched to 2 on D (one byte at 0xf10474).  Output
+  stops after `ES_DWC2_STATUS` as reported, then the board stayed silent
+  for more than 11 minutes with **no watchdog reset** and the ACM console
+  did not answer.  Recovered by re-flashing the original DTB.  Not fixed.
+- **#26 pstore** (candidate G = D + `EASYSTICK_PSTORE=1`
+  `EASYSTICK_SDIO_MAX_KHZ=5000`; candidate E, the same without 0065,
+  panicked at boot with `kernel BUG at mm/nommu.c:311`):
+  - `echo c > /proc/sysrq-trigger`: reset via MWDT, then
+    `ES_PSTORE OK: 1 record(s)`; `console-ramoops-0` holds the panic and
+    call trace.
+  - `panic=0` + sysrq: the kernel hangs, the MWDT resets the board after
+    a few minutes, and the record survives.  PSRAM keeps ramoops across a
+    watchdog reset.
+  - No `dmesg-ramoops-*` record appears; the console record is the only one.
+- **#21-1**: with the cap at 5 MHz, `ES_SDIO_CLOCK_HW ... actual_clock_hz=5000000`;
+  cold boot 11/11 and reboot 12/12 PASS.  Throughput (`scp`) and the soak
+  were not run (no Wi-Fi client attached), so the DTS default stays 400 kHz.
+- Build: an incremental build kept the previous kernel when 0065 was added
+  (b89fcbb now dircleans linux when the staged series changes).
+
+Flashing E/G rewrote the boot partition from the template, so the board
+generated new credentials (SSID `m5-F314`; see credentials.txt on the USB
+drive).
+
 ## Board state at the end of the session
 
-Running candidate D, SoftAP SSID `m5-6BF3` at 192.168.4.1.  The backup
+Running candidate G (pstore + 5 MHz SDIO test image), SoftAP SSID `m5-F314`
+at 192.168.4.1.  The backup
 above restores the original image.
