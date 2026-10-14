@@ -50,7 +50,8 @@ module_path="$module_dir/updates/esp32_sdio.ko"
 [ -f "$module_path" ] || module_path="$module_dir/extra/esp32_sdio.ko"
 module_sha256="<unavailable>"
 if [ -f "$module_path" ]; then
-	module_sha256=$(sha256sum "$module_path" 2>/dev/null | awk '{print $1}')
+	module_sha256=$(sha256sum "$module_path" 2>/dev/null)
+	module_sha256=${module_sha256%% *}
 fi
 printf 'ES_SDIO_CLOCK_EVIDENCE requested_mhz=%s module_param_mhz=%s clkdiv=%s clkena=%s module_sha256=%s\n' \
 	"$requested_mhz" "$module_param_mhz" \
@@ -69,6 +70,6 @@ for entry in \
 	printf '%-18s %s\n' "$name" "$(devmem "$address" 32)"
 done
 echo "interfaces:"
-ip -details link 2>/dev/null || true
+ifconfig -a 2>/dev/null || true
 echo "recent-kernel-log:"
 dmesg | tail -120
