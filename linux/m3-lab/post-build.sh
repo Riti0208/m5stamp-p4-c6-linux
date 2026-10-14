@@ -88,12 +88,15 @@ fi
 # NOMMU has no stack guard pages: the elf2flt default of 4 KB silently corrupts
 # .data/.bss on overflow.  Raise the bFLT stack for the network-facing daemons.
 # 32 KB (same as micropython) keeps three Dropbear children within the RAM budget.
+# tcpdump and easystick-boot-commit were left at 4 KB.
 FLTHDR=""
 for c in "${HOST_DIR:-/nonexistent}"/bin/*-flthdr; do
 	[ -x "$c" ] && FLTHDR=$c && break
 done
-if [ -n "${FLTHDR}" ] && [ -x "${FLTHDR}" ]; then
-	for bin in usr/sbin/dropbear usr/bin/dbclient usr/sbin/wpa_supplicant usr/sbin/iw; do
+[ -n "${FLTHDR}" ] || { echo "M3-lab: flthdr not found under HOST_DIR" >&2; exit 1; }
+if [ -x "${FLTHDR}" ]; then
+	for bin in usr/sbin/dropbear usr/bin/dbclient usr/sbin/wpa_supplicant usr/sbin/iw \
+		usr/bin/tcpdump usr/sbin/easystick-boot-commit; do
 		if [ -f "${TARGET_DIR}/${bin}" ]; then
 			"${FLTHDR}" -s 32768 "${TARGET_DIR}/${bin}"
 			# Fail the build if the stack did not stick (#28).
@@ -103,8 +106,15 @@ if [ -n "${FLTHDR}" ] && [ -x "${FLTHDR}" ]; then
 			}
 		fi
 	done
-else
-	echo "M3-lab: flthdr not found (HOST_DIR unset); bFLT stack sizes left at default" >&2
+	# Every other bFLT must keep at least BusyBox's 16000 bytes (#18).
+	find "${TARGET_DIR}" -type f | while read -r bin; do
+		[ "$(head -c 4 "${bin}")" = bFLT ] || continue
+		stack=$("${FLTHDR}" "${bin}" | sed -n 's/.*Stack Size:[[:space:]]*//p')
+		if [ -z "${stack}" ] || [ "$((stack))" -lt 16000 ]; then
+			echo "M3-lab: bFLT stack ${stack:-unknown} below 16000 in ${bin#"${TARGET_DIR}"/}" >&2
+			exit 1
+		fi
+	done || exit 1
 fi
 
 # Boot FAT template (#8, #22): the USB drive image used on first boot and as
