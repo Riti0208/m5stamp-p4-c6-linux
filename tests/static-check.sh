@@ -7,7 +7,10 @@
 set -u
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-scripts=$(find "$root/linux/m3-lab/rootfs-overlay" "$root/linux/m3-lab/post-build.sh" \
+# The m3-lab image also carries the board overlay (easystick-sdio-diag).
+board="$root/linux/buildroot-external/board/easystick-stamp-p4/rootfs-overlay"
+scripts=$(find "$root/linux/m3-lab/rootfs-overlay" "$board" \
+	"$root/linux/m3-lab/post-build.sh" \
 	-type f \( -path '*/init.d/*' -o -path '*/usr/sbin/*' -o -name post-build.sh \) 2>/dev/null)
 
 # Commands known to be missing from the BusyBox build (see issue #7).
@@ -21,6 +24,15 @@ for f in $scripts; do
 	fi
 	# post-build.sh runs on the build host and only lists applet names.
 	[ "${f##*/}" = post-build.sh ] && continue
+	# Board overlay files that m3-lab shadows, or that post-build deletes,
+	# never reach the image.
+	case "$f" in
+	"$board"/*)
+		rel=${f#"$board"/}
+		[ -e "$root/linux/m3-lab/rootfs-overlay/$rel" ] && continue
+		grep -q "TARGET_DIR}/$rel\"" "$root/linux/m3-lab/post-build.sh" && continue
+		;;
+	esac
 	for cmd in $missing; do
 		# Match the command in command position, ignoring comments.
 		if grep -v '^[[:space:]]*#' "$f" | grep -Eq "(^|[^A-Za-z0-9_./-])$cmd([[:space:];|&)]|$)"; then
