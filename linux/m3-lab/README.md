@@ -40,7 +40,7 @@ safe-eject action. The empty legacy LUN `file` attribute is the hand-off to
 `easystick-bootsync`; it validates a private read-only snapshot, applies the
 configuration, and reattaches the LUN. The daemon never uses `forced_eject`.
 
-Network status is written atomically to `/tmp/easystick-status.txt` for SSH or
+Network status is written atomically to `/run/easystick-status.txt` for SSH or
 serial inspection. It is not written into the exported FAT image. A validated
 snapshot is staged in reserved PSRAM, and a normal reboot asks boot-shim to
 write the inactive flash slot, verify its CRC, and atomically switch redundant

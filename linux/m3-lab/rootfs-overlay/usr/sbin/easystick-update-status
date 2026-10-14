@@ -9,7 +9,7 @@ GATEWAY="${4:-none}"
 SSID="${5:-none}"
 MODE="${6:-sta}"
 
-RUNTIME_DIR="${EASYSTICK_RUNTIME_DIR:-/tmp}"
+RUNTIME_DIR="${EASYSTICK_RUNTIME_DIR:-/run}"
 STATUS_FILE="$RUNTIME_DIR/easystick-status.txt"
 STATUS_TMP="$RUNTIME_DIR/.easystick-status.$$"
 LAST_STATUS_FILE="$RUNTIME_DIR/.last_status"

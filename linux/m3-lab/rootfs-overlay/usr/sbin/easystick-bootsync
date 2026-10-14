@@ -5,7 +5,7 @@
 BOOT_IMG="/tmp/boot.img"
 LUN_CTL="/usr/sbin/easystick-usb-lun"
 BOOT_COMMIT="/usr/sbin/easystick-boot-commit"
-MNT_POINT="/tmp/mnt_snap"
+MNT_POINT="/run/mnt_snap"
 # Snapshots and staged files carry credentials and the Wi-Fi PSK (#11).
 umask 077
 
@@ -97,9 +97,9 @@ while true; do
 	fi
 	[ "$LUN_STATE" = "device-owned" ] || continue
 
-	SNAP_IMG="/tmp/boot-snap.$$"
-	WPA_STAGE="/tmp/.bootsync-wpa.$$"
-	CFG_STAGE="/tmp/.bootsync-config.$$"
+	SNAP_IMG="/run/boot-snap.$$"
+	WPA_STAGE="/run/.bootsync-wpa.$$"
+	CFG_STAGE="/run/.bootsync-config.$$"
 	rm -f "$SNAP_IMG" "$WPA_STAGE" "$CFG_STAGE"
 
 	if ! cp -f "$BOOT_IMG" "$SNAP_IMG" 2>/dev/null; then

@@ -33,7 +33,7 @@ password_auth_off() {
 	return 0
 }
 
-LOCK=/tmp/.es-ssh.lock
+LOCK=/run/.es-ssh.lock
 
 start() {
 	# start and the backgrounded restart from S40network may overlap; serialize.
@@ -53,7 +53,7 @@ start_locked() {
 		return 1
 	fi
 
-	KEY=/tmp/dropbear_ed25519_host_key
+	KEY=/run/dropbear_ed25519_host_key
 
 	# Regenerate Ed25519 host key every boot.  Do not use dropbear -R per
 	# connection (that would rotate the key on every accept).
@@ -98,7 +98,7 @@ start_locked() {
 		fi
 		# Respawn inetd if it is ever killed (e.g. by the OOM killer).
 		easystick-respawn -- /usr/sbin/inetd -f -R 10 "$INETD_CONF" &
-		echo $! > /tmp/.es-inetd-sup
+		echo $! > /run/.es-inetd-sup
 	else
 		es_hk "ES_HOSTKEY INETD_ALREADY"
 		printf '%s\n' "M3-lab: inetd already running"
@@ -116,9 +116,9 @@ case "${1:-start}" in
 	restart|reload) restart ;;
 	stop)
 		s=""
-		read -r s 2>/dev/null < /tmp/.es-inetd-sup || true
+		read -r s 2>/dev/null < /run/.es-inetd-sup || true
 		[ -n "$s" ] && kill "$s" 2>/dev/null || true
-		rm -f /tmp/.es-inetd-sup
+		rm -f /run/.es-inetd-sup
 		killall inetd 2>/dev/null || true ;;
 	*) echo "Usage: $0 {start|stop|restart|reload}" >&2; exit 1 ;;
 esac

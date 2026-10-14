@@ -326,7 +326,7 @@ start() {
 				sleep 1
 				if command -v udhcpd >/dev/null 2>&1; then
 					mkdir -p /tmp /var/lib/misc
-					touch /tmp/udhcpd.leases
+					touch /run/udhcpd.leases
 					easystick-respawn -- udhcpd -f -S /etc/udhcpd.conf >/dev/null 2>&1 &
 					echo $! > "$UDHCPD_SUP"
 					echo "M3-lab: udhcpd started on wlan0 (192.168.4.1)"

@@ -71,7 +71,7 @@ The C6 on the Stamp AddOn has no USB port of its own; it is updated over the SDI
 | :--- | :--- | :--- | :--- | :--- |
 | **Wi-Fi SoftAP** | `m5-XXXX` | — | `psk=` in `credentials.txt` | WPA2-PSK, 2.4 GHz 802.11b/g/n, channel 1/6/11 |
 | **SSH (`dropbear`)**| `192.168.4.1:22` | `m5` | `password=` in `credentials.txt` | Default user with home directory `/home/m5` |
-| **Runtime status** | SSH / serial | — | — | Read `/tmp/easystick-status.txt`; the USB FAT image is not modified while exported |
+| **Runtime status** | SSH / serial | — | — | Read `/run/easystick-status.txt`; the USB FAT image is not modified while exported |
 | **Serial Console** | `COMx` (115200 8N1) | *(root shell)* | *(none)* | `ttyGS1` over USB-Serial/JTAG. Press `Enter` to activate |
 
 ### Per-device credentials
@@ -159,7 +159,7 @@ esptool.py --chip esp32p4 --port COM10 --baud 460800 \
 2. **Optional USB Mass Storage Configuration**: If using the [EasyStick carrier](#optional-hardware-easystick-usb-mass-storage-carrier), disconnect the Stamp-P4 USB-C cable after flashing, then plug the carrier's USB Type-A connection into your PC. Do not power USB-A and USB-C simultaneously. A 256KB FAT drive (volume `EASYSTICK`) will appear with `cmdline.txt`, `config.txt`, and `wpa_supplicant.conf`. Without this carrier or equivalent USB wiring, skip this step and use Wi-Fi/SSH or the USB-C serial console.
    - Edit and save the configuration, then use the operating system's **Eject / Safely Remove** action. The host-issued SCSI eject transfers ownership of the image back to Linux; only then does `easystick-bootsync` validate the FAT snapshot and reload the network.
    - Do not reconnect or remove power until the serial log reports `USB storage reattached`. Invalid or incomplete FAT images are rejected and the previous runtime configuration remains active.
-   - Live network status is available as `/tmp/easystick-status.txt` over SSH or serial. The exported USB drive is strictly dedicated to boot configuration (`cmdline.txt`, `config.txt`, `wpa_supplicant.conf`).
+   - Live network status is available as `/run/easystick-status.txt` over SSH or serial. The exported USB drive is strictly dedicated to boot configuration (`cmdline.txt`, `config.txt`, `wpa_supplicant.conf`).
    - Imported settings are applied immediately and staged in PSRAM. Reboot the board normally to commit the validated image to the inactive flash slot. The boot shim verifies the image CRC, switches metadata only after readback succeeds, and retains the previous slot if power is lost during the flash update.
    - Power loss before that reboot discards the staged change. Wait for `boot update committed` in the serial log before removing power if the setting must survive the next boot.
 3. Open `credentials.txt` on the USB drive (or read the `ES_CREDENTIALS NEW` line in the serial log) and connect to the Wi-Fi SSID `ssid=` with the passphrase `psk=`.
