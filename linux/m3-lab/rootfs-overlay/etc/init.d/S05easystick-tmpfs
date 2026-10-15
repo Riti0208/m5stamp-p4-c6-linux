@@ -204,12 +204,15 @@ start() {
 		fi
 	fi
 
-	# OverlayFS for writable /home, /root, /var/lib
+	# Writable /home, /root, /var/lib: copy the few squashfs entries to /tmp
+	# and bind-mount the copy.  Not overlayfs: ext2 and ramfs lack
+	# RENAME_WHITEOUT/EXCHANGE, so a lower name that was deleted could not be
+	# created again until reboot (mkdir /home/m5 -> EINVAL, #12).
 	es_log "ES_OVERLAY BEGIN"
 	for d in /home /root /var/lib; do
-		mkdir -p "$d" 2>/dev/null || true
-		mkdir -p "/tmp/overlay${d}/upper" "/tmp/overlay${d}/work" 2>/dev/null || true
-		if mount -t overlay overlay -o "lowerdir=${d},upperdir=/tmp/overlay${d}/upper,workdir=/tmp/overlay${d}/work" "$d" 2>/dev/null; then
+		mkdir -p "$d" "/tmp/rw${d}" 2>/dev/null || true
+		if cp -a "${d}/." "/tmp/rw${d}/" 2>/dev/null &&
+		   mount -o bind "/tmp/rw${d}" "$d" 2>/dev/null; then
 			es_log "ES_OVERLAY OK: $d"
 		else
 			es_log "ES_OVERLAY FAIL: $d"
