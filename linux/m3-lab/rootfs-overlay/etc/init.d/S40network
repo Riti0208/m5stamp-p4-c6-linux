@@ -257,13 +257,27 @@ start() {
 		dmesg -n 4 2>/dev/null || true
 	fi
 
+	# sdio_mhz= in config.txt overrides the built-in rate (#21).  The module
+	# cannot be unloaded, so it applies at boot only, and the DTB's
+	# max-frequency still caps the bus.
 	WANT_MHZ="${ES_SDIO_MHZ:-}"
+	if [ -z "$WANT_MHZ" ]; then
+		WANT_MHZ=$(conf_get sdio_mhz /tmp/config.txt "$NOSPACE")
+		case "$WANT_MHZ" in
+			'') ;;
+			1|2|5|10|20|40) echo "M3-lab: sdio_mhz=$WANT_MHZ from config.txt" ;;
+			*)
+				echo "M3-lab: ignoring sdio_mhz=$WANT_MHZ (use 1, 2, 5, 10, 20 or 40)"
+				WANT_MHZ=
+				;;
+		esac
+	fi
 	if [ -z "$WANT_MHZ" ] && [ -r /etc/easystick/sdio-clock-mhz ]; then
 		WANT_MHZ=$(cat /etc/easystick/sdio-clock-mhz)
 	fi
 	WANT_MHZ="${WANT_MHZ:-5}"
 	case "$WANT_MHZ" in
-		1|2|5|10) ;;
+		1|2|5|10|20|40) ;;
 		*) echo "ES_SDIO_CLOCK_FAIL invalid requested_mhz=$WANT_MHZ" >&2; exit 70 ;;
 	esac
 	MODULE_DIR="/lib/modules/$(uname -r)"
