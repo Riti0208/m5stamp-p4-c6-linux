@@ -133,6 +133,10 @@ apply_country() {
 		[A-Z][A-Z]) ;;
 		*) echo "M3-lab: CONFIG ERROR: country=$cc is not a two-letter code; ignored"; return 0 ;;
 	esac
+	# Built-in cfg80211 asks for regulatory.db before the rootfs is mounted
+	# and keeps that failure, so "iw reg set" silently stays on 00 until the
+	# database is reloaded (#12).
+	iw reg reload 2>/dev/null || true
 	if iw reg set "$cc" 2>/dev/null; then
 		echo "M3-lab: regulatory domain $cc"
 	else
