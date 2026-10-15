@@ -1,0 +1,75 @@
+Keep a vfork() child from rewriting the server's memory
+
+On NOMMU Dropbear vfork()s the session command, and the child runs in the
+server's address space until it execs.  Two things it did there broke the
+server it resumes:
+
+- signal(SIGCHLD, SIG_DFL).  uClibc's LinuxThreads signal() installs its
+  own pthread_sighandler in the kernel and keeps the real handler in a
+  table in process memory.  The child's call set the shared table entry
+  to SIG_DFL (NULL) while the server's kernel handler stayed
+  pthread_sighandler, so the server jumped to address 0 on the SIGCHLD
+  that followed the command's exit.  Its SIGSEGV handler then wrote
+  "Aiee, segfault!" to stderr, which is the SSH socket under inetd, and the
+  client failed with "Bad packet length" instead of getting exit-status.
+  execve() resets caught signals to SIG_DFL, so the call is not needed.
+
+- dropbear_exit() when exec (or dup2/chdir) failed.  svr_dropbear_exit()
+  skipped session_cleanup() for the child but still freed the host key and
+  listen addresses and called exit(), which runs atexit handlers and
+  flushes stdio -- all in the server's memory.  Leave with _exit() once
+  the message is logged.
+
+--- a/src/dbutil.c
++++ b/src/dbutil.c
+@@ -313,8 +313,16 @@
+ 
+ 		TRACE(("back to normal sigchld"))
++#if DROPBEAR_VFORK
++		/* Leave SIGCHLD alone: this child still runs in the parent's
++		 * memory, and uClibc's LinuxThreads signal() records the handler
++		 * in a table there, so SIG_DFL would make the parent's next
++		 * SIGCHLD call a NULL handler.  execve() resets caught signals
++		 * to SIG_DFL anyway. */
++#else
+ 		/* Revert to normal sigchld handling */
+ 		if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+ 			dropbear_exit("signal() error");
+ 		}
++#endif
+ 
+ 		/* redirect stdin/stdout */
+--- a/src/svr-chansession.c
++++ b/src/svr-chansession.c
+@@ -842,8 +842,16 @@
+ 		
+ 		TRACE(("back to normal sigchld"))
++#if DROPBEAR_VFORK
++		/* Leave SIGCHLD alone: this child still runs in the parent's
++		 * memory, and uClibc's LinuxThreads signal() records the handler
++		 * in a table there, so SIG_DFL would make the parent's next
++		 * SIGCHLD call a NULL handler.  execve() resets caught signals
++		 * to SIG_DFL anyway. */
++#else
+ 		/* Revert to normal sigchld handling */
+ 		if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+ 			dropbear_exit("signal() error");
+ 		}
++#endif
+ 		
+ 		/* redirect stdin/stdout/stderr */
+--- a/src/svr-session.c
++++ b/src/svr-session.c
+@@ -281,4 +281,12 @@
+ 
+ #if DROPBEAR_VFORK
++	/* A vfork()ed child (exec failed, or a dup2()/chdir() error) shares
++	 * the server's memory: freeing the host key and addresses below, or
++	 * exit() running atexit handlers and flushing stdio, would corrupt the
++	 * session it returns to.  Leave without touching anything. */
++	if (svr_ses.server_pid != 0 && svr_ses.server_pid != getpid()) {
++		_exit(exitcode);
++	}
++
+ 	/* For uclinux only the main server process should cleanup - we don't want
+ 	 * forked children doing that */

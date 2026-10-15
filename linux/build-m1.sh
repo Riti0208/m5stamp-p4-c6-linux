@@ -447,6 +447,13 @@ if $network_profile; then
 	mkdir -p -- "${global_patch_stage}/wpa_supplicant"
 	cp -- "${script_dir}/m2/buildroot-patches/wpa-os-unix-vfork.patch" \
 		"${global_patch_stage}/wpa_supplicant/0001-os-unix-vfork-for-nommu.patch"
+	# Dropbear fixes for every SSH image (m3, m3-lab).  Numbered after the
+	# m3-lab ledger series so both stack in one directory.
+	if $ssh_profile; then
+		mkdir -p -- "${global_patch_stage}/dropbear"
+		cp -- "${script_dir}/m3/dropbear-patches/"*.patch \
+			"${global_patch_stage}/dropbear/"
+	fi
 	# M3-lab only: Dropbear SSH stage ledger (kmsg/ttyGS1 markers) and pacing patch.
 	if $lab_profile; then
 		mkdir -p -- "${global_patch_stage}/dropbear"
