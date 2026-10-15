@@ -1,0 +1,26 @@
+export PATH="/bin:/sbin:/usr/bin:/usr/sbin"
+
+if [ "$PS1" ]; then
+	# Read the UID with builtins: on NOMMU `id -u` costs a 512 KB exec per
+	# login and fails with ENOMEM while the boot scripts still run (#23).
+	_uid=
+	while read -r _k _uid _r; do
+		[ "$_k" = Uid: ] && break
+	done < /proc/self/status
+	if [ "$_uid" = 0 ]; then
+		export PS1='# '
+	else
+		export PS1='$ '
+	fi
+	unset _k _uid _r
+fi
+
+export EDITOR='/bin/vi'
+
+# Source configuration files from /etc/profile.d
+for i in /etc/profile.d/*.sh ; do
+	if [ -r "$i" ]; then
+		. $i
+	fi
+done
+unset i
