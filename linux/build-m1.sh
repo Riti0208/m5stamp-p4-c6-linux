@@ -1104,13 +1104,17 @@ if [[ -n ${EASYSTICK_BUILDROOT_JLEVEL:-} ]]; then
 	make_args+=("BR2_JLEVEL=${EASYSTICK_BUILDROOT_JLEVEL}")
 fi
 
+# sdio-max-khz is left out of profile_identity: it only edits the staged DTS,
+# and a profile change cleans the whole output, toolchain included.  The DTS
+# stamp below rebuilds just the kernel and DTB instead.
+
 # Retention BB PA / rendered-0052 digest must be part of identity so a reused
 # Buildroot tree cannot keep a kernel built against a previous nm PA.
 cmd53_bb_pa_id="${EASYSTICK_CMD53_BB_PA:-none}"
 cmd53_bb_0052_sha_id="${EASYSTICK_CMD53_BB_0052_SHA256:-none}"
 cmd53_bb_0053_sha_id="${EASYSTICK_CMD53_BB_0053_SHA256:-none}"
 cmd53_bb_0054_sha_id="${EASYSTICK_CMD53_BB_0054_SHA256:-none}"
-profile_identity="profile-contract=21 profile=${profile} network=${network_profile} ssh=${ssh_profile} lab=${lab_profile} sdio-default-mhz=${sdio_default_mhz} wdt-test-timeout-s=${wdt_test_timeout_s} wdt-test-no-feed=${wdt_test_no_feed} stacktrace-diagnostics=${stacktrace_diagnostics} stacktrace-module-debug-strip=${stacktrace_diagnostics} esp-hosted-cmd52-trace=${cmd52_trace} esp-hosted-cmd52-marker=${cmd52_marker} ssh-ledger=${EASYSTICK_SSH_LEDGER:-0} tcp22-ledger=${EASYSTICK_TCP22_LEDGER:-0} esp-hosted-tx-ledger=${EASYSTICK_ESPHOSTED_TX_LEDGER:-0} esp-hosted-diagnostics=${EASYSTICK_ESPHOSTED_DIAGNOSTICS:-0} dw-mmc-cmd53-err-prov=${EASYSTICK_DW_MMC_CMD53_ERR_PROV:-0} cmd53-retention-bb=${EASYSTICK_CMD53_RETENTION_BB:-0} cmd53-bb-allow-pio=${cmd53_bb_allow_pio} cmd53-bb-pa=${cmd53_bb_pa_id} cmd53-bb-0052-sha=${cmd53_bb_0052_sha_id} cmd53-bb-0053-sha=${cmd53_bb_0053_sha_id} cmd53-bb-0054-sha=${cmd53_bb_0054_sha_id} force-pio=${EASYSTICK_SDIO_FORCE_PIO:-1} idmac-inv=${EASYSTICK_IDMAC_DESC_INVALIDATE:-0} idmac-nc=${EASYSTICK_IDMAC_NONCOHERENT_RING:-0} cmd53-rx-desc=${EASYSTICK_CMD53_RX_DESC_BYTES:-0} buildroot-jlevel=${EASYSTICK_BUILDROOT_JLEVEL:-auto} c68=${c68_profile} top=${c68_top_profile} stress=${c68_stress_profile} l3=${EASYSTICK_C68_L3_SMOKE:-0} tsens-linux=${EASYSTICK_TSENS_LINUX:-0} tsens-oracle=${EASYSTICK_TSENS_ORACLE:-0}${lab_tools_identity}${sdio_max_identity}${pstore_identity}"
+profile_identity="profile-contract=21 profile=${profile} network=${network_profile} ssh=${ssh_profile} lab=${lab_profile} sdio-default-mhz=${sdio_default_mhz} wdt-test-timeout-s=${wdt_test_timeout_s} wdt-test-no-feed=${wdt_test_no_feed} stacktrace-diagnostics=${stacktrace_diagnostics} stacktrace-module-debug-strip=${stacktrace_diagnostics} esp-hosted-cmd52-trace=${cmd52_trace} esp-hosted-cmd52-marker=${cmd52_marker} ssh-ledger=${EASYSTICK_SSH_LEDGER:-0} tcp22-ledger=${EASYSTICK_TCP22_LEDGER:-0} esp-hosted-tx-ledger=${EASYSTICK_ESPHOSTED_TX_LEDGER:-0} esp-hosted-diagnostics=${EASYSTICK_ESPHOSTED_DIAGNOSTICS:-0} dw-mmc-cmd53-err-prov=${EASYSTICK_DW_MMC_CMD53_ERR_PROV:-0} cmd53-retention-bb=${EASYSTICK_CMD53_RETENTION_BB:-0} cmd53-bb-allow-pio=${cmd53_bb_allow_pio} cmd53-bb-pa=${cmd53_bb_pa_id} cmd53-bb-0052-sha=${cmd53_bb_0052_sha_id} cmd53-bb-0053-sha=${cmd53_bb_0053_sha_id} cmd53-bb-0054-sha=${cmd53_bb_0054_sha_id} force-pio=${EASYSTICK_SDIO_FORCE_PIO:-1} idmac-inv=${EASYSTICK_IDMAC_DESC_INVALIDATE:-0} idmac-nc=${EASYSTICK_IDMAC_NONCOHERENT_RING:-0} cmd53-rx-desc=${EASYSTICK_CMD53_RX_DESC_BYTES:-0} buildroot-jlevel=${EASYSTICK_BUILDROOT_JLEVEL:-auto} c68=${c68_profile} top=${c68_top_profile} stress=${c68_stress_profile} l3=${EASYSTICK_C68_L3_SMOKE:-0} tsens-linux=${EASYSTICK_TSENS_LINUX:-0} tsens-oracle=${EASYSTICK_TSENS_ORACLE:-0}${lab_tools_identity}${pstore_identity}"
 
 set_config_value() {
 	local config=$1 key=$2 value=$3
@@ -2139,6 +2143,18 @@ kernel_patch_stamp="${br_output}/.easystick-kernel-patches.sha256"
 if [[ "$(cat "$kernel_patch_stamp" 2>/dev/null)" != "$kernel_patch_sum" ]]; then
 	make "${make_args[@]}" linux-dirclean
 	echo "$kernel_patch_sum" >"$kernel_patch_stamp"
+fi
+# The staged DTS is rsynced into the kernel tree only by the build step, so a
+# changed DTS (a repository edit or EASYSTICK_SDIO_MAX_KHZ) needs linux-rebuild
+# to reach the DTB; Buildroot does not track it.
+dts_sum=$(cd "$dts_stage" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+dts_stamp="${br_output}/.easystick-dts.sha256"
+if [[ "$(cat "$dts_stamp" 2>/dev/null)" != "$dts_sum" ]]; then
+	if [[ -f "${br_output}/build/linux-custom/.stamp_built" ]]; then
+		echo "Staged DTS changed; rebuilding the kernel and DTB" >&2
+		make "${make_args[@]}" linux-rebuild
+	fi
+	echo "$dts_sum" >"$dts_stamp"
 fi
 if [[ "${EASYSTICK_LINUX_ONLY:-0}" == "1" ]]; then
 	make "${make_args[@]}" linux-dirclean
