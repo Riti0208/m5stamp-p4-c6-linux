@@ -1,7 +1,13 @@
-# Builds the release from the tagged commit, refuses assets that were not the
-# ones validated on hardware, and uploads them with the debug bundle (#8, #22).
-# Run manually (workflow_dispatch) to build and print the hashes for validation
-# without publishing anything.
+# Release in two steps (#8, #22):
+#  1. Run manually (workflow_dispatch) to build the assets and print their
+#     hashes.  Nothing is published.  Flash that artifact, validate it on
+#     hardware and record the hashes in linux/tests/*hardware-validation-*.md.
+#  2. Push a tag.  The tag run does not rebuild -- the image embeds the git
+#     revision and the runner's host name, so a rebuild never matches the
+#     validated hashes.  It takes the assets of the newest successful manual
+#     build of an ancestor whose sources are the same as the tag's (only
+#     docs, validation records and CI files may differ), refuses them unless
+#     every hash is in a validation record, and publishes them.
 name: release
 on:
   push:
@@ -13,8 +19,10 @@ on:
         required: true
 permissions:
   contents: write
+  actions: read
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
@@ -46,26 +54,20 @@ jobs:
           EASYSTICK_LEGAL_INFO=1 bash linux/build-c68.sh --vendor "$RUNNER_TEMP/out" --profile m3-lab
       - name: Package
         run: |
-          VERSION=${{ github.event.inputs.version || github.ref_name }}
+          VERSION=${{ github.event.inputs.version }}
           VERSION=${VERSION%%-*}
           python3 linux/tools/package-release.py \
             --build-output "$RUNNER_TEMP/out" \
             --boot-image "$RUNNER_TEMP/out/buildroot/images/boot.img" \
             --output release --version "$VERSION"
           cat release/SHA256SUMS.txt
-      - name: Check hashes against hardware validation records
-        if: github.event_name == 'push'
-        run: |
-          python3 linux/tools/check-validated-hashes.py \
-            --sums release/SHA256SUMS.txt \
-            --validation linux/tests/*hardware-validation-*.md
       # Corresponding source, patches and license texts (#31).  It is not
       # flashed, so it stays out of SHA256SUMS.txt and the validation check.
       # host-sources (build-host tools, not shipped) is left out, and the
       # kernel tarball that linux and linux-headers share is stored once.
       - name: Package legal-info
         run: |
-          VERSION=${{ github.event.inputs.version || github.ref_name }}
+          VERSION=${{ github.event.inputs.version }}
           VERSION=${VERSION%%-*}
           src="$RUNNER_TEMP/out/buildroot/legal-info/sources"
           for t in "$src"/linux-custom/linux-*.tar.gz; do
@@ -81,8 +83,52 @@ jobs:
           name: release-assets
           path: release/*
           if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch the validated build of this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${GITHUB_REF_NAME%%-*}
+          runs=$(gh run list --workflow release.yml --event workflow_dispatch \
+            --status success --limit 50 --json databaseId,headSha \
+            --jq '.[] | "\(.databaseId) \(.headSha)"')
+          run=
+          while read -r id sha; do
+            [ -n "$id" ] || continue
+            git merge-base --is-ancestor "$sha" HEAD 2>/dev/null || continue
+            # Sources, submodules and build scripts must be the tag's.
+            if git diff --name-only "$sha" HEAD |
+              grep -vE '\.md$|^docs/|^\.github/|^\.gitignore$' | grep -q .; then
+              continue
+            fi
+            run=$id
+            echo "using workflow_dispatch run $id built from $sha"
+            break
+          done <<< "$runs"
+          if [ -z "$run" ]; then
+            echo "no successful workflow_dispatch build of $GITHUB_REF_NAME's sources" >&2
+            exit 1
+          fi
+          gh run download "$run" -n release-assets -D release
+          ls -l release
+          test -f "release/m5stamp-p4-c6-linux-smp-$VERSION-16mb.bin.gz" || {
+            echo "run $run was not built as $VERSION" >&2
+            exit 1
+          }
+          (cd release && sha256sum -c SHA256SUMS.txt)
+      - name: Check hashes against hardware validation records
+        run: |
+          python3 linux/tools/check-validated-hashes.py \
+            --sums release/SHA256SUMS.txt \
+            --validation linux/tests/*hardware-validation-*.md
       - name: Publish release
-        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
