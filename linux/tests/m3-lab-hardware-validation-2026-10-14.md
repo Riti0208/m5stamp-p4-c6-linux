@@ -281,6 +281,14 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
   the file and restarting again, printk was back to `4 4 1 7` and a `<7>`
   line stayed off the console.  `ES_WDT` (KERN_INFO) is only in dmesg
   unless `debug=1`; `OBS` markers are in opt-in builds only.
+- **#26 pstore on by default (candidate AL: 6fe7bbe, built without
+  `EASYSTICK_PSTORE`)**: the boot reserves `ramoops@499af000` (64 KiB)
+  and logs `pstore: Registered ramoops as persistent store backend`;
+  S05 printed `ES_PSTORE OK: 0 record(s) in /sys/fs/pstore` and the
+  check gave 11/11.  `echo c > /proc/sysrq-trigger` panicked the kernel,
+  the board rebooted on its own (`panic=5`), and `/sys/fs/pstore` then
+  held `dmesg-ramoops-0` and `console-ramoops-0`, both with
+  `Kernel panic - not syncing: sysrq triggered crash`.
 
 Flashing E/G rewrote the boot partition from the template, so the board
 generated new credentials (SSID `m5-F314`, then `m5-4D54` after H and
