@@ -19,8 +19,8 @@ The default M3-lab image keeps those patches but applies 0024 so esp_info() in
 esp_sdio.c stays at debug level and does not starve ARP/SSH on NOMMU.
 Set EASYSTICK_SDIO_DEFAULT_MHZ to one of 1, 2, 5, or 10 to build a distinct
 SDIO clock arm.  The value is compiled into esp32_sdio.ko and attested at boot.
-The DTS still caps the bus at 400 kHz; set EASYSTICK_SDIO_MAX_KHZ to 1000, 2000,
-5000, 10000, 20000 or 40000 to raise that cap in a test image (#21).
+The DTS caps the bus at 5 MHz; set EASYSTICK_SDIO_MAX_KHZ to 400, 1000, 2000,
+10000, 20000 or 40000 to change that cap in a test image (#21).
 Set EASYSTICK_WDT_TEST_TIMEOUT_S to 1..3600 for a bounded watchdog positive
 control; the value is appended to the staged Linux bootargs only.
 Set EASYSTICK_WDT_TEST_NO_FEED=1 together with the timeout to disable the
@@ -126,13 +126,13 @@ case "$sdio_default_mhz" in
 	1|2|5|10) ;;
 	*) echo "EASYSTICK_SDIO_DEFAULT_MHZ must be 1, 2, 5, or 10" >&2; exit 2 ;;
 esac
-# The DTS caps the SDIO bus at 400 kHz (max-frequency), below the driver's
-# requested rate (#21).  This raises the cap for a test image only; the
-# default keeps the validated DTB and identity.
+# The DTS caps the SDIO bus at 5 MHz (max-frequency), the rate validated on
+# hardware (#21).  This changes the cap for a test image only; the default
+# keeps the validated DTB and identity.
 sdio_max_identity=""
-case "${EASYSTICK_SDIO_MAX_KHZ:-400}" in
-	400) ;;
-	1000|2000|5000|10000|20000|40000)
+case "${EASYSTICK_SDIO_MAX_KHZ:-5000}" in
+	5000) ;;
+	400|1000|2000|10000|20000|40000)
 		sdio_max_identity=" sdio-max-khz=${EASYSTICK_SDIO_MAX_KHZ}"
 		;;
 	*) echo "EASYSTICK_SDIO_MAX_KHZ must be 400, 1000, 2000, 5000, 10000, 20000 or 40000" >&2; exit 2 ;;
@@ -960,11 +960,11 @@ PY
 fi
 if [[ -n "$sdio_max_identity" ]]; then
 	dts_file="${dts_stage}/espressif/easystick-stamp-p4.dts"
-	[[ $(grep -c 'max-frequency = <400000>;' "$dts_file") == 1 ]] || {
-		echo "SDIO_MAX_GATE_FAIL: expected exactly one 400 kHz max-frequency in the DTS" >&2
+	[[ $(grep -c 'max-frequency = <5000000>;' "$dts_file") == 1 ]] || {
+		echo "SDIO_MAX_GATE_FAIL: expected exactly one 5 MHz max-frequency in the DTS" >&2
 		exit 1
 	}
-	sed -i "s/max-frequency = <400000>;/max-frequency = <${EASYSTICK_SDIO_MAX_KHZ}000>;/" "$dts_file"
+	sed -i "s/max-frequency = <5000000>;/max-frequency = <${EASYSTICK_SDIO_MAX_KHZ}000>;/" "$dts_file"
 fi
 if [[ -n "$pstore_identity" ]]; then
 	# 64 KB just below the boot-update request page; the boot-shim does not
