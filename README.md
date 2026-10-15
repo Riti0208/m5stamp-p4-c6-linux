@@ -53,7 +53,7 @@ Linux / macOS serial examples, how to open the console without resetting the boa
 - **SDIO clock**: the DTS caps the bus at 5 MHz (`max-frequency`), the rate the driver requests, and the boot logs `ES_SDIO_CLOCK_APPLY requested_mhz=5 ios_clock_hz=5000000`. Over SSH in station mode the v0.2.2 image moved 1 MiB at about 215 KB/s from a PC to the board and 220 KB/s back. To try another rate, build a test image with `EASYSTICK_SDIO_MAX_KHZ` (400–40000) together with `EASYSTICK_SDIO_DEFAULT_MHZ`; rates above 5 MHz have not been validated on hardware (#21).
 - **Secure Boot and flash encryption are disabled.** Physical access allows reading the flash (including Wi-Fi credentials in the boot FAT) and writing arbitrary firmware. See [SECURITY.md](SECURITY.md).
 - **Wi-Fi regulatory domain**: no `country=` is set by default, so the world regulatory domain applies. Set `country=` in `config.txt` for your region.
-- **Wi-Fi security**: WPA2-PSK only. Protected management frames are opt-in (`wifi_pmf=1`) and not yet tested with the C6 firmware; WPA3-SAE is not built.
+- **Wi-Fi security**: WPA2-PSK only. Protected management frames are opt-in (`wifi_pmf=1`); in station mode the v0.2.2 image joined an access point with it, while a SoftAP client negotiating PMF has not been tested. WPA3-SAE is not built.
 
 ### Updating the C6
 
@@ -222,7 +222,7 @@ wifi_psk=YOUR_WIFI_PASSWORD
 
 The board then joins that network as a station (leave `wifi_psk` out for an open network). With `wifi_mode=ap` the same two lines define the SoftAP instead (`channel=` picks the channel). When set, these lines take precedence over `wpa_supplicant.conf`. Invalid values (PSK not 8-63 characters, SSID over 32 bytes, `"` or `\` in either) are reported on the serial console as `M3-lab: CONFIG ERROR: ...` and the board keeps using `wpa_supplicant.conf`.
 
-`wifi_pmf=1` adds optional protected management frames (802.11w, `ieee80211w=1` with `WPA-PSK WPA-PSK-SHA256`) to the generated config, for both station and SoftAP. Peers without PMF still connect. It has not been tested with the C6 firmware yet; if the board stops joining, remove the line.
+`wifi_pmf=1` adds optional protected management frames (802.11w, `ieee80211w=1` with `WPA-PSK WPA-PSK-SHA256`) to the generated config, for both station and SoftAP. Peers without PMF still connect. In station mode it was tested with the v0.2.2 image (the board joined, got an address and set the clock from NTP); a client negotiating PMF with the SoftAP has not been tested. If the board stops joining, remove the line.
 
 `country=JP` (any two-letter code) in `config.txt` sets the Wi-Fi regulatory domain (`M3-lab: regulatory domain JP` on the console); `country=` inside `wpa_supplicant.conf` works too. Without it the board uses the restrictive world domain. Set it to the country where the board is used.
 
