@@ -33,3 +33,7 @@ CONFIG_EXT2_FS=y
 CONFIG_EXT2_FS_XATTR=y
 # Multicast receive for the mDNS responder (#25).
 CONFIG_IP_MULTICAST=y
+# -Os instead of -O2 (#29): vmlinux text 5520427 -> 4630157 bytes and
+# MemTotal 20176 -> 21040 kB on the board.
+# CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE is not set
+CONFIG_CC_OPTIMIZE_FOR_SIZE=y
