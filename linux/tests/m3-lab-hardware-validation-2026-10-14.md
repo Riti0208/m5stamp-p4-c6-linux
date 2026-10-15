@@ -257,6 +257,31 @@ Flashed with `flash-candidate.ps1 -AllowCandidateWrite` (write + verify passed).
 - Build: an incremental build kept the previous kernel when 0065 was added
   (b89fcbb now dircleans linux when the staged series changes).
 
+## Follow-up on 2026-10-15 (candidate AK: e3e9cb0 plus 43fd110)
+
+- **#29 item 3, kernel built with `-Os` (43fd110)**: vmlinux text went
+  from 5520427 to 4630157 bytes and the Image from 6.5 MB to 5.6 MB.
+  `Memory: 19844K/32768K available (3034K kernel code, ...)`, and
+  MemTotal went from 20176 kB to 21040 kB.  The flash boot gave 11/11,
+  and ten more resets (`capture-boot.ps1 -Reset`) each gave 11/11.
+  `iw dev wlan0 scan` listed 13 BSS over SDIO.  Throughput was not
+  measured (no Wi-Fi client).
+- **nommu-pool (#29)**: the 6 MB `linux,nommu-userspace-pool` at
+  0x49a00000 comes from the vendor patch `0010-mm-nommu-userspace-pool`.
+  User mmaps take the pool first, then buddy pages through
+  `alloc_pages_exact`.  The pool ends at the top of PSRAM and cannot grow
+  down without moving the boot FAT reserve at 0x499c0000, which the shim
+  uses at a fixed address.  No reason for the 6 MB size was found beyond
+  the vendor description, so it was left alone.
+- **#26 `debug=`**: the cmdline boots with `loglevel=4`, and
+  `/proc/sys/kernel/printk` is `4 4 1 7`.  With `debug=1` added to
+  `/tmp/config.txt` and S40network restarted, S40 printed
+  `M3-lab: debug=1: console loglevel 8`, printk became `8 4 1 7`, and a
+  `<7>` line written to `/dev/kmsg` reached the console.  After restoring
+  the file and restarting again, printk was back to `4 4 1 7` and a `<7>`
+  line stayed off the console.  `ES_WDT` (KERN_INFO) is only in dmesg
+  unless `debug=1`; `OBS` markers are in opt-in builds only.
+
 Flashing E/G rewrote the boot partition from the template, so the board
 generated new credentials (SSID `m5-F314`, then `m5-4D54` after H and
 `m5-73D7` after J; see credentials.txt on the USB drive).

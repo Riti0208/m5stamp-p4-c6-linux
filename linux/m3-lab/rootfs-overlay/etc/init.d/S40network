@@ -231,12 +231,13 @@ stop_udhcpd() {
 }
 
 start() {
-	# Cmdline keeps loglevel=8 for bring-up captures, but console traffic at
-	# that level still starves SDIO/ARP on this NOMMU target even after the
-	# quiet ESP-Hosted patches (0024/0025).  Drop console printk now so the
-	# lab SSH shot does not depend on a manual `dmesg -n 1` over ttyGS1.
-	# debug=1 in config.txt raises the console to KERN_DEBUG for bring-up
-	# captures (#26); expect slower Wi-Fi/SSH while it is on.
+	# The cmdline boots with loglevel=4, so kernel markers at KERN_INFO and
+	# below (ES_WDT, OBS) stay in dmesg only.  Console traffic at loglevel 8
+	# starves SDIO/ARP on this NOMMU target even after the quiet ESP-Hosted
+	# patches (0024/0025), so it stays opt-in: debug=1 in config.txt raises
+	# the console to KERN_DEBUG for bring-up captures (#26); expect slower
+	# Wi-Fi/SSH while it is on.  The ES_* lines from init scripts are plain
+	# echo output and always print; check-boot-log.py depends on them.
 	if [ "$(conf_get debug /tmp/config.txt "$NOSPACE")" = "1" ]; then
 		echo "M3-lab: debug=1: console loglevel 8 (all kernel messages)"
 		dmesg -n 8 2>/dev/null || true
