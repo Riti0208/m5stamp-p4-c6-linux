@@ -68,6 +68,12 @@ stop_wpa() {
 	fi
 	rm -f "$WPA_PID"
 	killall wpa_supplicant 2>/dev/null || true
+	# Its 1.8 MB block must be free before the next one can be loaded.
+	n=0
+	while killall -0 wpa_supplicant 2>/dev/null && [ "$n" -lt 10 ]; do
+		sleep 1
+		n=$((n + 1))
+	done
 }
 
 # True while the current wpa_supplicant child is alive (kill -0 is a builtin).
@@ -77,10 +83,15 @@ wpa_alive() {
 	[ -n "$p" ] && kill -0 "$p" 2>/dev/null
 }
 
-# Wait 3 s: a rejected config makes wpa_supplicant exit at once.
+# A rejected config makes wpa_supplicant exit at once, on every respawn.  An
+# exec that failed for want of 1.8 MB of contiguous RAM (NOMMU fragmentation)
+# usually works on a respawn 5 s later, so give it two before falling back.
 wpa_settled() {
-	sleep 3
-	wpa_alive
+	for t in 3 6 6 6; do
+		sleep "$t"
+		wpa_alive && return 0
+	done
+	return 1
 }
 
 # Start wpa_supplicant with $CONF; if it rejects the file (short psk, syntax
