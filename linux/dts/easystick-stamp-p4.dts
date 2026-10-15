@@ -277,6 +277,15 @@
 			no-map;
 		};
 
+		/* Second pool region (#23): the one at 0x49a00000 cannot grow down
+		 * past the fixed pages above, and the resident daemons fill it.
+		 * 4 MB here moves exec space from the fragmented buddy heap into
+		 * the pool; it ends where ramoops starts when pstore is on. */
+		linux_nommu_pool_low: nommu-userspace-pool@495af000 {
+			compatible = "linux,nommu-userspace-pool";
+			reg = <0x495af000 0x00400000>;
+		};
+
 		linux_nommu_pool: nommu-userspace-pool@49a00000 {
 			compatible = "linux,nommu-userspace-pool";
 			reg = <0x49a00000 0x00600000>;

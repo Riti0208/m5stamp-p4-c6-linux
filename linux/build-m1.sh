@@ -710,6 +710,7 @@ fi
 # NOMMU execmem ignores its range; drop the false "module loading will
 # fail" warning (#12).
 patches+=(0069-easystick-execmem-nommu-quiet.patch)
+patches+=(0070-easystick-nommu-pool-multi-region.patch)
 # C67-L2-STAGE: observe-only SMP breadcrumbs in smpboot.c (no behaviour change).
 if [[ "${EASYSTICK_C67_SMP_STAGE:-0}" == "1" || "${EASYSTICK_C68_CLEAN_RELEASE:-0}" == "1" ]]; then
 	patches+=(0037-easystick-c67-l2-stage-smpboot.patch)
@@ -875,6 +876,7 @@ for patch_name in "${patches[@]}"; do
 	      "$patch_name" == 0067-easystick-esp32p4-cache-sync-smp-lock.patch ||
 	      "$patch_name" == 0068-easystick-esp32p4-deaf-cpu-trace.patch ||
 	      "$patch_name" == 0069-easystick-execmem-nommu-quiet.patch ||
+	      "$patch_name" == 0070-easystick-nommu-pool-multi-region.patch ||
 	      "$patch_name" == 0056-easystick-wdt-stacktrace.patch ||
 	      "$patch_name" == 0055-easystick-sdio-clock-attest.patch ||
 	      "$patch_name" == 0060-easystick-dw-mmc-tx-software-dto.patch ||
