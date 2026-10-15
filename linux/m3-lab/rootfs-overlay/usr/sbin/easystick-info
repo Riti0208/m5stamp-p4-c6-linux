@@ -24,7 +24,7 @@ echo "== recent kernel log =="
 dmesg 2>/dev/null | tail -n 15
 
 echo "== last crash =="
-# pstore records exist only in EASYSTICK_PSTORE=1 images and are root-only.
+# pstore records are root-only and absent in EASYSTICK_PSTORE=0 images.
 # The boot shim's CRASH_CAPSULE line is on the serial console.
 if [ -d /sys/fs/pstore ] && ls /sys/fs/pstore/* >/dev/null 2>&1; then
 	ls -l /sys/fs/pstore

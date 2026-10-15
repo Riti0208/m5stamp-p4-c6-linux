@@ -192,8 +192,8 @@ start() {
 		( umask 077; syslogd -O /run/messages -s 32 -b 1 ) 2>/dev/null || true
 	fi
 
-	# ramoops records of the previous boot, in images built with
-	# EASYSTICK_PSTORE=1 (#26).
+	# ramoops records of the previous boot (#26; absent in images built
+	# with EASYSTICK_PSTORE=0).
 	if [ -d /sys/fs/pstore ] && grep -qw pstore /proc/filesystems 2>/dev/null; then
 		if mount -t pstore -o nosuid,nodev,noexec pstore /sys/fs/pstore 2>/dev/null; then
 			n=$(ls /sys/fs/pstore | grep -c '' || true)

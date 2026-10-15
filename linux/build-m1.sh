@@ -33,8 +33,8 @@ keeps the image that the hardware validation records describe.
 Set EASYSTICK_LEGAL_INFO=1 to also run Buildroot's legal-info into
 <vendor>/buildroot/legal-info (sources, patches and license texts, #31).  It
 does not change any image.
-Set EASYSTICK_PSTORE=1 with --profile m3-lab to reserve 64 KB of PSRAM for
-ramoops (kernel oops/panic and console tail, #26).  On hardware the console
+--profile m3-lab reserves 64 KB of PSRAM for ramoops (kernel oops/panic and
+console tail, #26); set EASYSTICK_PSTORE=0 to leave it out.  On hardware the console
 record keeps the panic across both the panic=5 restart and a watchdog reset
 of a hung kernel, together with a dmesg-ramoops record.
 Set EASYSTICK_BUILDROOT_JLEVEL=1 to serialize nested Buildroot package makes.
@@ -109,9 +109,11 @@ case "${EASYSTICK_LAB_TOOLS:-1}" in
 		;;
 	*) echo "EASYSTICK_LAB_TOOLS must be 0 or 1" >&2; exit 2 ;;
 esac
-# ramoops in PSRAM (#26), opt-in: it costs 64 KB of RAM.
+# ramoops in PSRAM (#26), on by default for m3-lab: it costs 64 KB of RAM.
 pstore_identity=""
-case "${EASYSTICK_PSTORE:-0}" in
+pstore_default=0
+if $lab_profile; then pstore_default=1; fi
+case "${EASYSTICK_PSTORE:-$pstore_default}" in
 	0) ;;
 	1)
 		$lab_profile || { echo "EASYSTICK_PSTORE=1 requires --profile m3-lab" >&2; exit 2; }
@@ -693,7 +695,7 @@ if $lab_profile; then
 		patches+=(0036-easystick-tcp22-bidirectional-ledger.patch)
 	fi
 fi
-# EASYSTICK_PSTORE=1: ramoops would vmap() its PSRAM buffer, which is BUG()
+# pstore (m3-lab default): ramoops would vmap() its PSRAM buffer, which is BUG()
 # on NOMMU (#26).
 if [[ -n "$pstore_identity" ]]; then
 	patches+=(0065-easystick-pstore-ram-nommu.patch)
@@ -994,7 +996,7 @@ fi
 if [[ -n "$pstore_identity" ]]; then
 	cat >>"${kernel_config_fragment}" <<'EOF'
 
-# ramoops in reserved PSRAM (EASYSTICK_PSTORE=1, #26).
+# ramoops in reserved PSRAM (m3-lab default, #26).
 CONFIG_PSTORE=y
 CONFIG_PSTORE_RAM=y
 CONFIG_PSTORE_CONSOLE=y

@@ -95,7 +95,7 @@ Record `dmesg | grep ES_SDIO_CLOCK` (root console; it is below the console logle
 time a 1 MB `scp` in both directions, and repeat steps 1, 4 and 6.  Only a
 rate that passes all of them should become the DTS default.
 
-## 8. pstore (images built with `EASYSTICK_PSTORE=1`, #26)
+## 8. pstore (default since #26; skip for `EASYSTICK_PSTORE=0` images)
 
 ```sh
 echo c > /proc/sysrq-trigger     # deliberate panic; sysrq is only in this image

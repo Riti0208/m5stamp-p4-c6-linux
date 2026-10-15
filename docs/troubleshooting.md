@@ -91,7 +91,8 @@ in the `crashlog` partition. `reason=1` is a watchdog reset. Resolve `epc` and
 `ra` with the `System.map` of the exact kernel `Image` that is flashed.
 
 The capsule holds only registers. For the kernel log of the crashed boot,
-build a test image with `EASYSTICK_PSTORE=1` (m3-lab only). It keeps an oops
+m3-lab images reserve pstore (ramoops) by default (`EASYSTICK_PSTORE=0` leaves
+it out). It keeps an oops
 or panic and the console tail in 64 KB of reserved PSRAM; after the reset,
 as root, read `/sys/fs/pstore/` (`ES_PSTORE OK: N record(s)` on the console).
 On hardware the record survived both a sysrq panic and a `panic=0` hang that
