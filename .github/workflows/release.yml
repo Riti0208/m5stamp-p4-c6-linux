@@ -72,6 +72,7 @@ jobs:
             h="$src/linux-headers-custom/${t##*/}"
             if [ -f "$h" ] && cmp -s "$t" "$h"; then ln -f "$t" "$h"; fi
           done
+          cp LICENSE "$RUNNER_TEMP/out/buildroot/legal-info/LICENSE.m5stamp-p4-c6-linux"
           tar -czf "release/m5stamp-p4-c6-linux-smp-$VERSION-legal-info.tar.gz" \
             -C "$RUNNER_TEMP/out/buildroot" --exclude=legal-info/host-sources legal-info
           ls -l release/*-legal-info.tar.gz
