@@ -22,6 +22,9 @@ __pycache__/
 *.env
 *.env.*
 wpa_supplicant.conf
+# Wi-Fi credentials for STA tests (wifi_ssid= / wifi_psk=)
+sta.txt
+credentials.txt
 *.key
 *.pem
 id_rsa*
