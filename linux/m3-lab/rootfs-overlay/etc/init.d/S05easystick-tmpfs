@@ -158,6 +158,11 @@ start() {
 	mount -o remount,gid=5,mode=620,ptmxmode=0666 /dev/pts 2>/dev/null || true
 	echo 4096 > /proc/sys/vm/min_free_kbytes 2>/dev/null || true
 	echo 500 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null || true
+	# Watermark boost raises min by up to 8 MB after a fragmenting allocation
+	# and only kswapd reclaim clears it.  With no swap and almost no page cache
+	# nothing is reclaimable, so order-0 allocations OOM with 10 MB free
+	# (seen killing wpa_supplicant on a switch to station mode).
+	echo 0 > /proc/sys/vm/watermark_boost_factor 2>/dev/null || true
 
 	# Hardening: root daemons write fixed names in world-writable /tmp, so make
 	# the kernel refuse symlink/hardlink/regular-file tricks there.  NOMMU has
