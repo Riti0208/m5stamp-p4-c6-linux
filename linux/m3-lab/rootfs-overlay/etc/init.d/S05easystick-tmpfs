@@ -191,7 +191,6 @@ start() {
 	if command -v syslogd >/dev/null 2>&1; then
 		( umask 077; syslogd -O /run/messages -s 32 -b 1 ) 2>/dev/null || true
 	fi
-	echo 1 > /proc/sys/vm/oom_kill_allocating_task 2>/dev/null || true
 
 	# ramoops records of the previous boot, in images built with
 	# EASYSTICK_PSTORE=1 (#26).
