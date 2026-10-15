@@ -1,6 +1,6 @@
 # M5Stamp ESP32-P4 + C6 SDIO Linux (SMP kernel, experimental dual-core)
 
-[![License](https://img.shields.io/badge/license-GPLv2%20%2F%20MIT%20%2F%20Apache-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPL--2.0--only-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-ESP32--P4%20%2B%20ESP32--C6-orange.svg)](https://m5stack.com)
 [![CPU](https://img.shields.io/badge/SMP-Experimental%20Dual--Core%20RV32IMAC-yellow.svg)](https://github.com/tsuyoshi-otake/m5stamp-p4-c6-linux/releases)
 
@@ -587,7 +587,7 @@ The images contain third-party software under its own licenses. Corresponding so
 
 Releases carry `…-legal-info.tar.gz`, Buildroot's `make legal-info` output for the image: the source archives, patches, configs and license texts of every package in the rootfs and the kernel (`manifest.csv` lists them). Sources of build-host tools (`host-sources`) are left out because they are not shipped. Build it locally with `EASYSTICK_LEGAL_INFO=1 bash linux/build-c68.sh …`; it lands in `<vendor>/buildroot/legal-info`. The boot shim and the C6 firmware are built from the ESP-IDF and ESP-Hosted revisions in `versions.lock.json`. The image itself lists the same pointers in `/usr/share/licenses/README`.
 
-The project's own files do not have a `LICENSE` yet; that choice is the maintainer's (#31).
+The project's own files are licensed under GPL-2.0-only ([`LICENSE`](LICENSE), #31), except where a file carries its own `SPDX-License-Identifier`: the boot shim (`linux/boot-shim/`) is `Apache-2.0 OR GPL-2.0-only`, and the schematics and Gerbers under `board/hardware/` are MIT ([`board/hardware/LICENSE`](board/hardware/LICENSE)).
 
 ## Acknowledgments & References
 
