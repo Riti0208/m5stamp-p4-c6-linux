@@ -2,9 +2,11 @@
 # Userland watchdog feeder (#32-6), enabled by watchdog=1 in config.txt.
 # The kernel feeds /dev/watchdog by itself until a process opens it, so a
 # hung userland was never reset.  Once this script holds the device, the
-# board resets ~30 s after it stops feeding: when it is no longer scheduled,
-# or when inetd (SSH) stays gone for MISS_LIMIT ticks.  SIGTERM writes the
-# magic close so a clean stop leaves the kernel feeding again.
+# board resets 120 s (DTS timeout-sec) after it stops feeding: when it is no
+# longer scheduled, or when inetd (SSH) stays gone for MISS_LIMIT ticks.
+# SIGTERM writes the magic close so a clean stop leaves the kernel feeding
+# again; the hardware watchdog keeps running, so the kernel also takes over
+# when this script is killed outright.
 
 WDT_DEV=${EASYSTICK_WDT_DEV:-/dev/watchdog}
 TICK_FIFO=${EASYSTICK_WDT_TICK:-/run/.es-wdt-tick}
