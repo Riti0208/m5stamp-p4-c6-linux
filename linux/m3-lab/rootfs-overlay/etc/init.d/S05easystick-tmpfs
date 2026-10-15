@@ -156,7 +156,11 @@ start() {
 
 	# Fix devpts ptmx permissions and optimize VM memory fragmentation
 	mount -o remount,gid=5,mode=620,ptmxmode=0666 /dev/pts 2>/dev/null || true
-	echo 4096 > /proc/sys/vm/min_free_kbytes 2>/dev/null || true
+	# The resident daemons fill the 6 MB nommu pool, so every exec after boot
+	# takes a 512 KB block from the 20 MB buddy heap.  A 4 MB reserve made
+	# that fail with free memory just above it and 512 KB blocks free (#23);
+	# 1 MB still leaves the Wi-Fi driver's atomic allocations headroom.
+	echo 1024 > /proc/sys/vm/min_free_kbytes 2>/dev/null || true
 	echo 500 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null || true
 	# Watermark boost raises min by up to 8 MB after a fragmenting allocation
 	# and only kswapd reclaim clears it.  With no swap and almost no page cache
