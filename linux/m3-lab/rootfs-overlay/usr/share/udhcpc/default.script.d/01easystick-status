@@ -6,17 +6,24 @@ ACTION="$1"
 
 case "$ACTION" in
 	bound|renew)
+		# S40network records the config wpa_supplicant runs with:
+		# credentials from config.txt use /run/wpa_cfg.conf.
+		_conf=/tmp/wpa_supplicant.conf
+		_c=""
+		read -r _c < /run/.es-wpa-conf 2>/dev/null || true
+		[ -n "$_c" ] && _conf=$_c
 		_ssid="none"
-		if [ -f /tmp/wpa_supplicant.conf ]; then
+		if [ -f "$_conf" ]; then
 			while IFS= read -r line; do
+				# ssid= only, not scan_ssid= or bssid=
 				case "$line" in
-					*ssid=*|*ssid\ =*)
+					ssid=*|*[[:blank:]]ssid=*)
 						_ssid="${line#*\"}"
 						_ssid="${_ssid%\"*}"
 						break
 						;;
 				esac
-			done < /tmp/wpa_supplicant.conf
+			done < "$_conf"
 		fi
 		[ -x /usr/sbin/easystick-update-status ] && /usr/sbin/easystick-update-status "CONNECTED" "$ip" "$subnet" "$router" "$_ssid" "sta"
 		;;

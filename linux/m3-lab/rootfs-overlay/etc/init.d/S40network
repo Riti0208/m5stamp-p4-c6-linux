@@ -83,6 +83,16 @@ wpa_alive() {
 	[ -n "$p" ] && kill -0 "$p" 2>/dev/null
 }
 
+# `iw dev wlan0 link` says "Connected" once the C6 has associated, before the
+# WPA handshake, and with a wrong PSK it keeps flipping back to it while the
+# AP retries.  wpa_supplicant holds operstate at "dormant" until the keys are
+# installed, so only "up" means the link carries traffic (#25).
+sta_authorized() {
+	o=""
+	read -r o 2>/dev/null < /sys/class/net/wlan0/operstate || return 1
+	[ "$o" = up ]
+}
+
 # A rejected config makes wpa_supplicant exit at once, on every respawn.  An
 # exec that failed for want of 1.8 MB of contiguous RAM (NOMMU fragmentation)
 # usually works on a respawn 5 s later, so give it two before falling back.
@@ -97,6 +107,8 @@ wpa_settled() {
 # Start wpa_supplicant with $CONF; if it rejects the file (short psk, syntax
 # error, BOM...), fall back to the built-in default so the board stays reachable.
 spawn_wpa() {
+	# The udhcpc status hook reads the SSID from the file in use.
+	echo "$CONF" > /run/.es-wpa-conf
 	easystick-respawn -d 5 -p "$WPA_PID" -- \
 		wpa_supplicant -q -i wlan0 -c "$CONF" >/dev/null 2>&1 &
 	echo $! > "$WPA_SUP"
@@ -368,7 +380,7 @@ start() {
 			start_wpa
 			j=0
 			while [ "$j" -lt 60 ]; do
-				if iw dev wlan0 link 2>/dev/null | grep -q 'Connected'; then
+				if sta_authorized; then
 					echo "M3-lab: association complete; configuring IPv4"
 					if command -v udhcpc >/dev/null 2>&1; then
 						if run_dhcp; then
