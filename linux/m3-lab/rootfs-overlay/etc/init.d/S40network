@@ -301,12 +301,16 @@ start() {
 		if [ -n "$cfg_host" ]; then
 			hostname "$cfg_host" 2>/dev/null || true
 		fi
-		if [ "$cfg_mode" = "ap" ]; then
+		# The conf that wpa_supplicant runs decides the mode; a wifi_mode= that
+		# contradicts it would start an AP with a station conf or the reverse,
+		# so report it and follow the conf (#9).
+		if grep -q '^[[:space:]]*mode=2' "$CONF" 2>/dev/null; then
 			is_ap=1
-		elif [ "$cfg_mode" = "sta" ]; then
-			is_ap=0
-		elif grep -q '^[[:space:]]*mode=2' "$CONF" 2>/dev/null; then
-			is_ap=1
+		fi
+		if [ "$cfg_mode" = "ap" ] && [ "$is_ap" -eq 0 ]; then
+			echo "M3-lab: CONFIG ERROR: wifi_mode=ap but $CONF is a station config (no mode=2); starting station mode"
+		elif [ "$cfg_mode" = "sta" ] && [ "$is_ap" -eq 1 ]; then
+			echo "M3-lab: CONFIG ERROR: wifi_mode=sta but $CONF is an AP config (mode=2); starting SoftAP"
 		fi
 	elif grep -q '^[[:space:]]*mode=2' "$CONF" 2>/dev/null; then
 		is_ap=1
