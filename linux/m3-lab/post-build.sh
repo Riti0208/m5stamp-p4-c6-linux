@@ -122,6 +122,12 @@ if [ -x "${FLTHDR}" ]; then
 			}
 		fi
 	done
+	# Small helpers only need BusyBox's floor.
+	for bin in usr/sbin/easystick-respawn; do
+		if [ -f "${TARGET_DIR}/${bin}" ]; then
+			"${FLTHDR}" -s 16384 "${TARGET_DIR}/${bin}"
+		fi
+	done
 	# Every other bFLT must keep at least BusyBox's 16000 bytes (#18).
 	find "${TARGET_DIR}" -type f | while read -r bin; do
 		[ "$(head -c 4 "${bin}")" = bFLT ] || continue
