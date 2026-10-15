@@ -25,7 +25,7 @@ Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SS
   - Broadcasts a per-device SSID **`m5-XXXX`** with a WPA2-PSK passphrase generated on first boot (see [Per-device credentials](#per-device-credentials)).
   - Integrated `udhcpd` DHCP server assigning client IPs in `192.168.4.2` – `192.168.4.20` (Gateway: `192.168.4.1`).
 - **Pre-installed Developer Tools**:
-  - **SSH Server**: Password-enabled Dropbear on TCP port 22 (user `m5`, per-device password from `credentials.txt`).
+  - **SSH Server**: Password-enabled Dropbear on TCP port 22 (user `m5`, per-device password from `credentials.txt`). inetd accepts up to 20 new connections a minute, then stops listening for 60 s.
   - **`vi` Editor**: Full-featured BusyBox `vi` with search, undo, visual buffers, and syntax assistance.
   - **MicroPython (`python3`)**: MicroPython v1.22.2 compiled with bFLT Load-to-Ram (`-r`) and position-independent code (`-fPIC`) for stable NOMMU execution.
   - **Writable Filesystem (OverlayFS)**: While the root filesystem is SquashFS (read-only for durability), RAM-backed OverlayFS is mounted on `/home`, `/root`, and `/var/lib` so users can create and edit scripts during the current boot. Its contents are lost when power is removed.
@@ -39,6 +39,7 @@ Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SS
   - USB CDC-ACM 64-byte TX FIFO bounded polling (`0062`), eliminating full-screen editor (`vi`) and TUI terminal lockups.
   - Early CRNG entropy initialization via `seedrng` on OverlayFS, preventing `getrandom()` system call stalls.
   - SDIO DW-MMC host controller driver enhancements with software DTO and buffer pacing (`0032`, `0033`, `0060`, `0061`).
+  - NOMMU user memory: programs load into a 10 MB reserved pool in two regions (6 MB + 4 MB, `0070`) instead of the fragmented page allocator, so SSH logins, `S40network restart` and console commands no longer fail with `nommu: Allocation of length … failed` (#23). Each BusyBox process still takes about 500 KB, because bFLT programs do not share their text.
 
 ---
 
@@ -49,7 +50,7 @@ Linux / macOS serial examples, how to open the console without resetting the boa
 ## C6 Firmware, Security Features & Regulatory Notes
 
 - **C6 firmware**: Linux expects the ESP32-C6 to run ESP-Hosted NG 1.0.6 (the driver logs `ESP-Hosted Version: NG-1.0.6.0.1`). The release images flash the P4 only; a C6 running another version may fail to attach over SDIO. Check the version in the boot log: a mismatch is logged as `Incompatible ESP Host-firmware release detected` with both versions, and no log line at all means the C6 is not running ESP-Hosted NG. See [Updating the C6](#updating-the-c6).
-- **SDIO clock**: the DTS caps the bus at 5 MHz (`max-frequency`), the rate the driver requests, and the boot logs `ES_SDIO_CLOCK_APPLY requested_mhz=5 ios_clock_hz=5000000`. Over SSH in station mode that gave about 120 KB/s from a PC to the board and 45–73 KB/s back. To try another rate, build a test image with `EASYSTICK_SDIO_MAX_KHZ` (400–40000) together with `EASYSTICK_SDIO_DEFAULT_MHZ`; rates above 5 MHz have not been validated on hardware (#21).
+- **SDIO clock**: the DTS caps the bus at 5 MHz (`max-frequency`), the rate the driver requests, and the boot logs `ES_SDIO_CLOCK_APPLY requested_mhz=5 ios_clock_hz=5000000`. Over SSH in station mode the v0.2.2 image moved 1 MiB at about 215 KB/s from a PC to the board and 220 KB/s back. To try another rate, build a test image with `EASYSTICK_SDIO_MAX_KHZ` (400–40000) together with `EASYSTICK_SDIO_DEFAULT_MHZ`; rates above 5 MHz have not been validated on hardware (#21).
 - **Secure Boot and flash encryption are disabled.** Physical access allows reading the flash (including Wi-Fi credentials in the boot FAT) and writing arbitrary firmware. See [SECURITY.md](SECURITY.md).
 - **Wi-Fi regulatory domain**: no `country=` is set by default, so the world regulatory domain applies. Set `country=` in `config.txt` for your region.
 - **Wi-Fi security**: WPA2-PSK only. Protected management frames are opt-in (`wifi_pmf=1`) and not yet tested with the C6 firmware; WPA3-SAE is not built.
@@ -94,17 +95,16 @@ Every board gets its own credentials on first boot; no SSID or password is share
 
 ### 1. Download Release Package
 
-> **Known mismatch (#8):** the published `v0.2.1-smp` binaries were built before the
-> A/B `/boot` update and the `/tmp/easystick-status.txt` fix. They have no `boot_alt` /
-> `bootmeta*` partitions, and their `easystick-update-status` still writes to the exported
-> FAT image. The A/B, `-PreserveBoot` and status-file descriptions below apply to a build
-> from `main` (see `linux/README.md`) and to the next
-> release, which is produced by the tag-driven `release` workflow with a debug bundle
-> (`System.map`, `vmlinux`) and a hash check against the hardware-validation record.
+> **v0.2.2** is the first release built by the tag-driven `release` workflow: the
+> assets are the CI build that was flashed and checked on hardware, and the tag run
+> refuses any asset whose hash is not in `linux/tests/v0.2.2-hardware-validation-2026-10-15.md`.
+> It adds the A/B `/boot` slots and metadata (`boot_alt`, `bootmeta*`) that the
+> `v0.2.1-smp` binaries lacked (#8), and ships a debug bundle (`System.map`, `vmlinux`)
+> and the GPL corresponding source (`*-legal-info.tar.gz`, #31).
 
 Download either the monolithic 16MB raw flash image or the partition zip package from the [Releases](https://github.com/tsuyoshi-otake/m5stamp-p4-c6-linux/releases) page:
-- **`m5stamp-p4-c6-linux-smp-v0.2.1-16mb.bin.gz`**: Single 16MB raw flash image (simplest, flash to `0x0`).
-- **`m5stamp-p4-c6-linux-smp-v0.2.1.zip`**: Individual partition binaries with automated PowerShell flash script.
+- **`m5stamp-p4-c6-linux-smp-v0.2.2-16mb.bin.gz`**: Single 16MB raw flash image (simplest, flash to `0x0`).
+- **`m5stamp-p4-c6-linux-smp-v0.2.2.zip`**: Individual partition binaries with automated PowerShell flash script.
 
 ### 2. Flash using `esptool.py`
 
@@ -112,8 +112,8 @@ Connect the M5Stamp-P4 via its USB-C port to your computer. Identify your serial
 
 #### Option A: Monolithic 16MB Raw Image Flash (Recommended)
 ```bash
-gzip -d m5stamp-p4-c6-linux-smp-v0.2.1-16mb.bin.gz
-esptool.py --chip esp32p4 --port COM10 --baud 460800 write_flash 0x0 m5stamp-p4-c6-linux-smp-v0.2.1-16mb.bin
+gzip -d m5stamp-p4-c6-linux-smp-v0.2.2-16mb.bin.gz
+esptool.py --chip esp32p4 --port COM10 --baud 460800 write_flash 0x0 m5stamp-p4-c6-linux-smp-v0.2.2-16mb.bin
 ```
 
 #### Option B: Release PowerShell Script
@@ -121,8 +121,9 @@ esptool.py --chip esp32p4 --port COM10 --baud 460800 write_flash 0x0 m5stamp-p4-
 .\flash-candidate.ps1 -Port COM10 -AllowCandidateWrite
 ```
 
-Do not use `-PreserveBoot` for the first upgrade from v0.2.0. It is only for
-reflashing a v0.2.1 installation whose A/B slots and metadata are already initialized.
+Do not use `-PreserveBoot` for the first upgrade from v0.2.1-smp or older, which have
+no A/B slots. It is only for reflashing a v0.2.2 installation whose A/B slots and
+metadata are already initialized.
 
 #### Option C: Manual Multi-Partition Flash
 ```bash
@@ -548,24 +549,24 @@ This compiles:
 
 ---
 
-## SHA-256 Checksums (v0.2.1-smp)
+## SHA-256 Checksums (v0.2.2)
 
 ```text
 Raw 16MB Monolithic Image:
-40a2eeb0352325dd281ede298f7302806c4f981e719b6921ec8f772539e76cd4  m5stamp-p4-c6-linux-smp-v0.2.1-16mb.bin.gz
-a7092726773c069315370ad75072b6f1a5d394cfc3085b8de8bad7d7139b02c2  m5stamp-p4-c6-linux-smp-v0.2.1-16mb.bin (uncompressed)
+75bebaf0cb28ae66a9b49858652c55d9901662419046ec592b553c6295ce22a3  m5stamp-p4-c6-linux-smp-v0.2.2-16mb.bin.gz
+70d15a9afb78384c20c539f69e31ece1eefbfda49ab69d3ee0d8f9478b191363  m5stamp-p4-c6-linux-smp-v0.2.2-16mb.bin (uncompressed)
 
 Partition Archive:
-a58898b681f8d4f1c48550b0f455f23bab569713ed510aa4aea4985bff11b6fb  m5stamp-p4-c6-linux-smp-v0.2.1.zip
+532b0f1a90d5d2233676c3952cf71a7ddc9f65b5d4b0f06fe0b7f63e5268916d  m5stamp-p4-c6-linux-smp-v0.2.2.zip
 
 Individual Partitions:
-62aa88ee34366eb99a4440a8989e091e24f763feeaee5eac15ebc2041deb1fe4  bootloader.bin
-b242c213fa404d793fb8efabe7c85ec06fc54a654c9ca3297d287413d321ce48  partition-table.bin
-889cfdbfe82d8eab4da5706a059f3a681114b162c48acca019a4d72f8acc24e9  boot-shim.bin
-1a500a905c990b46dac13e508a6d9cd6df5bdc60fc4e4065e9ea12b314e04720  Image
-41e2f6d0ca9d5b378fd165a13ab53b69660a68c6949410704e7d4ca0039a2e18  rootfs.squashfs
-7a37f953e2cd48de1c3241f4ecd3522f63520b2e53f6b6ceb8fdcf29c6d83d9c  easystick-stamp-p4.dtb
-025a7a9ead81e18d6a89c9c3886566270cf990dfbeec1d5d2830f81d1ebc96eb  boot.img
+52f83f7d023851c29575b3b323692af3131d2b631719a862a9e5db81de0c90d0  bootloader.bin
+7937656f29960d53b63010b51836e233d092e067e320cde5778ec43e04218870  partition-table.bin
+66b565c1f0318c1716cfee3daf60a31eb52f588e0753e4f9ce564a0473f9df86  boot-shim.bin
+7e10c5578c23e8cb5897b038fe12775b44bfdf5d62193cee5c611d12900a1330  Image
+7bdc3763b0aa2e5701166a4c10396f555a603b98dc4d6798e1aaf4039d855d75  rootfs.squashfs
+bf8cf6362c11f7d4d6d148564c2fd614be5d02d77d898478e4402876f7a81184  easystick-stamp-p4.dtb
+70ca3ae44bef09b089eed7a31ab565e98e05ba8d3f2636a0f602986c922f355e  boot.img
 ```
 
 ---
