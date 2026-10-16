@@ -19,10 +19,11 @@ define BUSYBOX_DAEMONS_APPLY_BUSYBOX_PATCHES
 endef
 BUSYBOX_DAEMONS_POST_PATCH_HOOKS += BUSYBOX_DAEMONS_APPLY_BUSYBOX_PATCHES
 
+# conf reads allno.config from the build directory for allnoconfig; a
+# KCONFIG_ALLCONFIG on the make command line does not reach it.
 define BUSYBOX_DAEMONS_CONFIGURE_CMDS
-	$(BUSYBOX_MAKE_ENV) $(MAKE) $(BUSYBOX_MAKE_OPTS) -C $(@D) \
-		KCONFIG_ALLCONFIG=$(BUSYBOX_DAEMONS_PKGDIR)/busybox-daemons.config \
-		allnoconfig
+	cp $(BUSYBOX_DAEMONS_PKGDIR)/busybox-daemons.config $(@D)/allno.config
+	$(BUSYBOX_MAKE_ENV) $(MAKE) $(BUSYBOX_MAKE_OPTS) -C $(@D) allnoconfig
 	for opt in INIT INETD SYSLOGD UDHCPD NOMMU STATIC; do \
 		grep -qx "CONFIG_$${opt}=y" $(@D)/.config || { \
 			echo "busybox-daemons: CONFIG_$${opt} is not set" >&2; exit 1; }; \
