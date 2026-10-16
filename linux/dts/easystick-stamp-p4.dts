@@ -207,11 +207,14 @@
 			/*
 			 * C6 uses the normal four-bit SDIO data path.  The earlier
 			 * four-bit CMD52 CRC observation predated the GPIO43..48 IO_MUX
-			 * correction in the boot shim.  5 MHz (the driver's request) is
-			 * validated on hardware; faster rates are not yet (#21).
+			 * correction in the boot shim.  The cap is 40 MHz (CIU clock
+			 * divided by one): the MMC core enumerates the C6 at 20 MHz,
+			 * then esp32_sdio applies its requested rate (5 MHz unless
+			 * sdio_mhz= in config.txt says otherwise).  5, 10, 20 and
+			 * 40 MHz were checked on hardware (#21).
 			 */
 			bus-width = <4>;
-			max-frequency = <5000000>;
+			max-frequency = <40000000>;
 			clock-frequency = <40000000>;
 			non-removable;
 			broken-cd;
