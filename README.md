@@ -39,6 +39,7 @@ Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SS
   - USB CDC-ACM 64-byte TX FIFO bounded polling (`0062`), eliminating full-screen editor (`vi`) and TUI terminal lockups.
   - Early CRNG entropy initialization via `seedrng` on OverlayFS, preventing `getrandom()` system call stalls.
   - SDIO DW-MMC host controller driver enhancements with software DTO and buffer pacing (`0032`, `0033`, `0060`, `0061`).
+  - NOMMU system-call pointers (`0071`): a pointer that is not in PSRAM or the memory-mapped root filesystem now fails with `EFAULT`. Before, the kernel read it itself; `vi` with no file name passes a NULL path and froze the board until the watchdog reset it.
   - NOMMU user memory: programs load into a 10 MB reserved pool in two regions (6 MB + 4 MB, `0070`) instead of the fragmented page allocator, so SSH logins, `S40network restart` and console commands no longer fail with `nommu: Allocation of length … failed` (#23). Each BusyBox process still takes about 500 KB, because bFLT programs do not share their text. The m3-lab image therefore runs init, inetd, syslogd and udhcpd from `busybox-daemons`, a second BusyBox built with only those four applets (192 KB each). At idle that leaves about 1 MB more of the pool free, which is one more concurrent SSH session (5–6 instead of 4–5; `linux/tests/busybox-daemons-2026-10-16.md`). `MemAvailable` does not change, because it does not count the pool.
 
 ---
@@ -104,6 +105,11 @@ Every board gets its own credentials on first boot; no SSID or password is share
 >   more of the NOMMU user pool free: one more concurrent SSH session (#23).
 > - `sdio_mhz=` in `config.txt` selects the C6 SDIO clock (1–40 MHz); the DTS cap
 >   is now 40 MHz, while 5 MHz stays the default (#21).
+>
+> **Known issue in v0.2.3 and earlier:** `vi` started without a file name, or any
+> program that passes a bad pointer to a system call, freezes the board until the
+> watchdog resets it. Start `vi` with a file name (`vi notes.txt`) on those
+> releases. `main` fixes it (`0071`, `linux/tests/vi-null-pointer-2026-10-17.md`).
 >
 > v0.2.2 added the A/B `/boot` slots and metadata (`boot_alt`, `bootmeta*`) that the
 > `v0.2.1-smp` binaries lacked (#8), a debug bundle (`System.map`, `vmlinux`) and
