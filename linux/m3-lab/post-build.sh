@@ -14,6 +14,11 @@ rm -f "${TARGET_DIR}/etc/modules-load.d/esp-hosted-ng.conf"
 # read-only squashfs root.  Keep the production script in m3/ unchanged.
 rm -f "${TARGET_DIR}/etc/init.d/S10easystick-config"
 
+# uClibc's utils install getconf as an ELF executable.  This NOMMU kernel runs
+# only bFLT, so the shell fell back to BusyBox and printed "getconf: applet
+# not found".
+rm -f "${TARGET_DIR}/usr/bin/getconf"
+
 for path in \
 	"${TARGET_DIR}/etc/init.d/S05easystick-tmpfs" \
 	"${TARGET_DIR}/etc/init.d/S40network" \
