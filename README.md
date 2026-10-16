@@ -95,16 +95,23 @@ Every board gets its own credentials on first boot; no SSID or password is share
 
 ### 1. Download Release Package
 
-> **v0.2.2** is the first release built by the tag-driven `release` workflow: the
-> assets are the CI build that was flashed and checked on hardware, and the tag run
-> refuses any asset whose hash is not in `linux/tests/v0.2.2-hardware-validation-2026-10-15.md`.
-> It adds the A/B `/boot` slots and metadata (`boot_alt`, `bootmeta*`) that the
-> `v0.2.1-smp` binaries lacked (#8), and ships a debug bundle (`System.map`, `vmlinux`)
-> and the GPL corresponding source (`*-legal-info.tar.gz`, #31).
+> **v0.2.3** is built and published the same way as v0.2.2: the assets are the CI
+> build that was flashed and checked on hardware, and the tag run refuses any asset
+> whose hash is not in `linux/tests/v0.2.3-hardware-validation-2026-10-16.md`.
+> Changes since v0.2.2:
+> - The resident init, inetd, syslogd and udhcpd run from `busybox-daemons`, a
+>   four-applet BusyBox (192 KB each instead of 496 KB), which leaves about 1 MB
+>   more of the NOMMU user pool free: one more concurrent SSH session (#23).
+> - `sdio_mhz=` in `config.txt` selects the C6 SDIO clock (1–40 MHz); the DTS cap
+>   is now 40 MHz, while 5 MHz stays the default (#21).
+>
+> v0.2.2 added the A/B `/boot` slots and metadata (`boot_alt`, `bootmeta*`) that the
+> `v0.2.1-smp` binaries lacked (#8), a debug bundle (`System.map`, `vmlinux`) and
+> the GPL corresponding source (`*-legal-info.tar.gz`, #31).
 
 Download either the monolithic 16MB raw flash image or the partition zip package from the [Releases](https://github.com/tsuyoshi-otake/m5stamp-p4-c6-linux/releases) page:
-- **`m5stamp-p4-c6-linux-smp-v0.2.2-16mb.bin.gz`**: Single 16MB raw flash image (simplest, flash to `0x0`).
-- **`m5stamp-p4-c6-linux-smp-v0.2.2.zip`**: Individual partition binaries with automated PowerShell flash script.
+- **`m5stamp-p4-c6-linux-smp-v0.2.3-16mb.bin.gz`**: Single 16MB raw flash image (simplest, flash to `0x0`).
+- **`m5stamp-p4-c6-linux-smp-v0.2.3.zip`**: Individual partition binaries with automated PowerShell flash script.
 
 ### 2. Flash using `esptool.py`
 
@@ -112,8 +119,8 @@ Connect the M5Stamp-P4 via its USB-C port to your computer. Identify your serial
 
 #### Option A: Monolithic 16MB Raw Image Flash (Recommended)
 ```bash
-gzip -d m5stamp-p4-c6-linux-smp-v0.2.2-16mb.bin.gz
-esptool.py --chip esp32p4 --port COM10 --baud 460800 write_flash 0x0 m5stamp-p4-c6-linux-smp-v0.2.2-16mb.bin
+gzip -d m5stamp-p4-c6-linux-smp-v0.2.3-16mb.bin.gz
+esptool.py --chip esp32p4 --port COM10 --baud 460800 write_flash 0x0 m5stamp-p4-c6-linux-smp-v0.2.3-16mb.bin
 ```
 
 #### Option B: Release PowerShell Script
@@ -122,7 +129,7 @@ esptool.py --chip esp32p4 --port COM10 --baud 460800 write_flash 0x0 m5stamp-p4-
 ```
 
 Do not use `-PreserveBoot` for the first upgrade from v0.2.1-smp or older, which have
-no A/B slots. It is only for reflashing a v0.2.2 installation whose A/B slots and
+no A/B slots. It is only for reflashing a v0.2.2 or later installation whose A/B slots and
 metadata are already initialized.
 
 #### Option C: Manual Multi-Partition Flash
@@ -551,24 +558,24 @@ This compiles:
 
 ---
 
-## SHA-256 Checksums (v0.2.2)
+## SHA-256 Checksums (v0.2.3)
 
 ```text
 Raw 16MB Monolithic Image:
-75bebaf0cb28ae66a9b49858652c55d9901662419046ec592b553c6295ce22a3  m5stamp-p4-c6-linux-smp-v0.2.2-16mb.bin.gz
-70d15a9afb78384c20c539f69e31ece1eefbfda49ab69d3ee0d8f9478b191363  m5stamp-p4-c6-linux-smp-v0.2.2-16mb.bin (uncompressed)
+ec83ff3f76abd5471f26c968df9e2a48af00c205429021687cf7f5508699875f  m5stamp-p4-c6-linux-smp-v0.2.3-16mb.bin.gz
+756f8d3a7bae3d70b42ed9824c9794b8bce5ff2402b159c7b26ea2eba52cfac0  m5stamp-p4-c6-linux-smp-v0.2.3-16mb.bin (uncompressed)
 
 Partition Archive:
-532b0f1a90d5d2233676c3952cf71a7ddc9f65b5d4b0f06fe0b7f63e5268916d  m5stamp-p4-c6-linux-smp-v0.2.2.zip
+89bb4da0752b9e058d8458310a17b3e07af4ddb6b7c90c4ae14c960b950787c8  m5stamp-p4-c6-linux-smp-v0.2.3.zip
 
 Individual Partitions:
-52f83f7d023851c29575b3b323692af3131d2b631719a862a9e5db81de0c90d0  bootloader.bin
+1afe94e6d902d59bcc34fde1b46d4c75c37d9ac7fb2a5bdf5ee069ef7c2f14c9  bootloader.bin
 7937656f29960d53b63010b51836e233d092e067e320cde5778ec43e04218870  partition-table.bin
-66b565c1f0318c1716cfee3daf60a31eb52f588e0753e4f9ce564a0473f9df86  boot-shim.bin
-7e10c5578c23e8cb5897b038fe12775b44bfdf5d62193cee5c611d12900a1330  Image
-7bdc3763b0aa2e5701166a4c10396f555a603b98dc4d6798e1aaf4039d855d75  rootfs.squashfs
-bf8cf6362c11f7d4d6d148564c2fd614be5d02d77d898478e4402876f7a81184  easystick-stamp-p4.dtb
-70ca3ae44bef09b089eed7a31ab565e98e05ba8d3f2636a0f602986c922f355e  boot.img
+63335ae0bc2536a85e939df78acf137efea59d5feacc83d925e5aa107b956d60  boot-shim.bin
+800dcfced0aaf35cba53a878177cf5c26a3700efd805e9918ce5c17436a1921b  Image
+b6d8cde9d1551ef2b3789cfca9741dcdf6a8c8e5bd54e8b7e615b0806ba0c749  rootfs.squashfs
+a12b18e1347ade36c499c79338ff7125bd4140bf56c64ecfedce8f93b4d3a852  easystick-stamp-p4.dtb
+3d10e4f4fc01ce8b26ef5931a162c0cb6fd86f69e6732371b086924145bd6761  boot.img
 ```
 
 ---
