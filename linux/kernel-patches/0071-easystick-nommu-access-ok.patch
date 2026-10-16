@@ -1,0 +1,52 @@
+Subject: [PATCH] easystick: reject user pointers outside PSRAM on NOMMU
+
+`vi` with no file name froze the board until the watchdog reset it.
+BusyBox vi calls open(NULL), and the same happens with write(1, NULL, 4)
+or any syscall given a bad pointer.  NOMMU riscv uses the asm-generic
+accessors: copy_from_user() is a plain memcpy() with no exception-table
+entry, and the generic __access_ok() accepts every address, so the kernel
+loads from address 0 itself.  The access fault in memcpy() is not
+recovered (pstore showed an illegal-instruction oops at a non-text
+address, or nothing at all).  A user-mode load from address 0 is fine: it
+gets SIGSEGV.
+
+All user memory lives in the PSRAM that Linux manages, so let
+__access_ok() accept only pointers in [phys_ram_base, high_memory).
+Everything else now fails with -EFAULT before the kernel touches it.
+
+---
+--- a/arch/riscv/include/asm/uaccess.h
++++ b/arch/riscv/include/asm/uaccess.h
+@@ -488,6 +488,32 @@
+ 		goto label;
+ 
+ #else /* CONFIG_MMU */
++#ifdef CONFIG_SOC_ESP32P4
++/*
++ * NOMMU uses the asm-generic accessors: copy_from_user() and friends are a
++ * plain memcpy() with no exception-table fixup, and the generic
++ * __access_ok() accepts every address.  A bad user pointer therefore makes
++ * the kernel itself load from it.  On this SoC a load from address 0 takes
++ * an access fault in M-mode that the kernel cannot recover from (open(NULL)
++ * from BusyBox vi froze the board until the watchdog reset it), and a
++ * pointer into the peripheral window reads or writes device registers.
++ *
++ * All user memory (programs, stacks, the NOMMU pool, mmap) lives in the
++ * PSRAM that Linux manages, so accept only pointers into it.  Everything
++ * else fails with -EFAULT, as it would with an MMU.
++ */
++extern void *high_memory;
++
++#define __access_ok __access_ok
++static inline int __access_ok(const void __user *ptr, unsigned long size)
++{
++	unsigned long addr = (unsigned long)ptr;
++	unsigned long start = (unsigned long)phys_ram_base;
++	unsigned long end = (unsigned long)high_memory;
++
++	return addr >= start && addr <= end && size <= end - addr;
++}
++#endif /* CONFIG_SOC_ESP32P4 */
+ #include <asm-generic/uaccess.h>
+ #endif /* CONFIG_MMU */
+ #endif /* _ASM_RISCV_UACCESS_H */
