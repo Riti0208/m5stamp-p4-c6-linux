@@ -30,10 +30,11 @@ define BUSYBOX_DAEMONS_CONFIGURE_CMDS
 	cat $(@D)/.config.base $(BUSYBOX_DAEMONS_PKGDIR)/busybox-daemons.config \
 		> $(@D)/.config
 	yes "" | $(BUSYBOX_MAKE_ENV) $(MAKE) $(BUSYBOX_MAKE_OPTS) -C $(@D) oldconfig
-	for opt in INIT INETD SYSLOGD UDHCPD NOMMU STATIC SH_IS_NONE; do \
-		grep -qx "CONFIG_$${opt}=y" $(@D)/.config || { \
-			echo "busybox-daemons: CONFIG_$${opt} is not set" >&2; exit 1; }; \
-	done
+	grep '^\(# \)\{0,1\}CONFIG_' $(BUSYBOX_DAEMONS_PKGDIR)/busybox-daemons.config | \
+		while IFS= read -r line; do \
+			grep -qxF -- "$$line" $(@D)/.config || { \
+				echo "busybox-daemons: oldconfig dropped: $$line" >&2; exit 1; }; \
+		done
 endef
 
 define BUSYBOX_DAEMONS_BUILD_CMDS
