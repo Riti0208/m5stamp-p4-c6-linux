@@ -151,3 +151,11 @@ CONFIG_FEATURE_ROTATE_LOGFILE=y
 
 # #17: S05 formats the /tmp ramdisk (/dev/ram0) at boot.
 CONFIG_MKE2FS=y
+
+# #23: the resident daemons run from busybox-daemons, a minimal second
+# BusyBox (package/busybox-daemons).  Leave them out here so PREFER_APPLETS
+# cannot run them from this full image; init stays (Buildroot forces it)
+# but /sbin/init points at busybox-daemons (post-build.sh).
+# CONFIG_INETD is not set
+# CONFIG_SYSLOGD is not set
+# CONFIG_UDHCPD is not set

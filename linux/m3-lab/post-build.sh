@@ -88,6 +88,21 @@ if [ -n "${bb_links}" ]; then
 	done
 fi
 
+# Resident daemons run from the minimal busybox-daemons (#23): on NOMMU each
+# process holds a private copy of its binary's text, about 370 KB for the
+# full BusyBox.  The full image keeps the init applet (Buildroot forces it),
+# so repoint /sbin/init; linuxrc is unused (no initramfs).
+if [ -x "${TARGET_DIR}/bin/busybox-daemons" ]; then
+	rm -f "${TARGET_DIR}/linuxrc"
+	for link in sbin/init usr/sbin/inetd sbin/syslogd usr/sbin/udhcpd; do
+		case "${link}" in
+			usr/*) target=../../bin/busybox-daemons ;;
+			*) target=../bin/busybox-daemons ;;
+		esac
+		ln -sfn "${target}" "${TARGET_DIR}/${link}"
+	done
+fi
+
 # EASYSTICK_LAB_TOOLS=0 (#32) builds without dbclient; drop the other
 # bring-up entry points with it.
 if [ -n "${BR2_CONFIG:-}" ] &&

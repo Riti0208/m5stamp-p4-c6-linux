@@ -1,0 +1,8 @@
+config BR2_PACKAGE_BUSYBOX_DAEMONS
+	bool "BusyBox build for the resident daemons"
+	depends on BR2_PACKAGE_BUSYBOX
+	help
+	  A second, minimal BusyBox with only init, inetd, syslogd and
+	  udhcpd.  On NOMMU each process holds a private copy of its
+	  binary's text, so the daemons that stay resident cost a fraction
+	  of the full BusyBox image each (#23).

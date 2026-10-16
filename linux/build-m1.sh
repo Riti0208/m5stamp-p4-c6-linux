@@ -2074,6 +2074,8 @@ if $lab_profile; then
 	set_config_value "${br_output}/.config" BR2_PACKAGE_EASYSTICK_MDNS y
 	# Respawn daemons without a resident BusyBox subshell each.
 	set_config_value "${br_output}/.config" BR2_PACKAGE_EASYSTICK_RESPAWN y
+	# init, inetd, syslogd and udhcpd from a minimal second BusyBox (#23).
+	set_config_value "${br_output}/.config" BR2_PACKAGE_BUSYBOX_DAEMONS y
 else
 	set_config_value "${br_output}/.config" BR2_PACKAGE_EASYSTICK_BOOT_COMMIT "# BR2_PACKAGE_EASYSTICK_BOOT_COMMIT is not set"
 fi
@@ -2240,7 +2242,7 @@ if $ssh_profile; then
 			"BR2_PACKAGE_EASYSTICK_BOOT_COMMIT=y" \
 			"BR2_PACKAGE_WIRELESS_REGDB=y" \
 			"BR2_PACKAGE_EASYSTICK_MDNS=y" \
-			"BR2_PACKAGE_EASYSTICK_RESPAWN=y"; do
+			"BR2_PACKAGE_EASYSTICK_RESPAWN=y" 			"BR2_PACKAGE_BUSYBOX_DAEMONS=y"; do
 			grep -Fqx -- "${expected}" "${br_output}/.config" || {
 				echo "m3-lab config check failed: ${expected}" >&2
 				exit 1
@@ -2250,6 +2252,12 @@ if $ssh_profile; then
 			echo "m3-lab check failed: boot commit helper missing" >&2
 			exit 1
 		}
+		for link in sbin/init usr/sbin/inetd sbin/syslogd usr/sbin/udhcpd; do
+			[[ "$(readlink "${br_output}/target/${link}")" == */busybox-daemons ]] || {
+				echo "m3-lab check failed: ${link} does not point at busybox-daemons" >&2
+				exit 1
+			}
+		done
 	fi
 	if $lab_tools; then
 		for expected in \
