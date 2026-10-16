@@ -1,6 +1,6 @@
-# BusyBox services required by the NOMMU Dropbear inetd front-end and by
-# directional Wi-Fi bring-up diagnostics (ARP/ICMP/TCP/22 on the STA iface).
-CONFIG_INETD=y
+# BusyBox services for the NOMMU Dropbear inetd front-end (inetd itself is
+# in busybox-daemons, below) and for directional Wi-Fi bring-up diagnostics
+# (ARP/ICMP/TCP/22 on the STA iface).
 CONFIG_PASSWD=y
 CONFIG_MODPROBE=y
 # S05 passes file=/removable=/iSerialNumber= to g_mass_storage on the
@@ -16,9 +16,6 @@ CONFIG_SHA256SUM=y
 CONFIG_DEVMEM=y
 CONFIG_NETSTAT=y
 CONFIG_NC=y
-CONFIG_UDHCPD=y
-CONFIG_FEATURE_UDHCPD_BASE_IP_ON_MAC=y
-CONFIG_FEATURE_UDHCPD_WRITE_LEASES_EARLY=y
 CONFIG_DEFAULT_MODULES_DIR="/lib/modules"
 CONFIG_DEFAULT_DEPMOD_FILE="modules.dep"
 CONFIG_VI=y

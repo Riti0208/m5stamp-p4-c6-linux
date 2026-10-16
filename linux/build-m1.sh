@@ -2242,7 +2242,8 @@ if $ssh_profile; then
 			"BR2_PACKAGE_EASYSTICK_BOOT_COMMIT=y" \
 			"BR2_PACKAGE_WIRELESS_REGDB=y" \
 			"BR2_PACKAGE_EASYSTICK_MDNS=y" \
-			"BR2_PACKAGE_EASYSTICK_RESPAWN=y" 			"BR2_PACKAGE_BUSYBOX_DAEMONS=y"; do
+			"BR2_PACKAGE_EASYSTICK_RESPAWN=y" \
+			"BR2_PACKAGE_BUSYBOX_DAEMONS=y"; do
 			grep -Fqx -- "${expected}" "${br_output}/.config" || {
 				echo "m3-lab config check failed: ${expected}" >&2
 				exit 1
@@ -2255,6 +2256,13 @@ if $ssh_profile; then
 		for link in sbin/init usr/sbin/inetd sbin/syslogd usr/sbin/udhcpd; do
 			[[ "$(readlink "${br_output}/target/${link}")" == */busybox-daemons ]] || {
 				echo "m3-lab check failed: ${link} does not point at busybox-daemons" >&2
+				exit 1
+			}
+		done
+		for opt in INETD SYSLOGD UDHCPD; do
+			grep -Fqx -- "# CONFIG_${opt} is not set" \
+				"${br_output}"/build/busybox-[0-9]*/.config || {
+				echo "m3-lab check failed: full BusyBox still has ${opt}" >&2
 				exit 1
 			}
 		done
