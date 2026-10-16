@@ -19,11 +19,17 @@ define BUSYBOX_DAEMONS_APPLY_BUSYBOX_PATCHES
 endef
 BUSYBOX_DAEMONS_POST_PATCH_HOOKS += BUSYBOX_DAEMONS_APPLY_BUSYBOX_PATCHES
 
-# conf reads allno.config from the build directory for allnoconfig; a
-# KCONFIG_ALLCONFIG on the make command line does not reach it.
+# allnoconfig in this kconfig does not keep the values from allno.config,
+# so drop the listed symbols from its output, append the list and let
+# oldconfig settle the dependencies.
 define BUSYBOX_DAEMONS_CONFIGURE_CMDS
-	cp $(BUSYBOX_DAEMONS_PKGDIR)/busybox-daemons.config $(@D)/allno.config
 	$(BUSYBOX_MAKE_ENV) $(MAKE) $(BUSYBOX_MAKE_OPTS) -C $(@D) allnoconfig
+	sed -n 's/^\(# \)\{0,1\}\(CONFIG_[A-Z0-9_]*\)[= ].*/\2/p' \
+		$(BUSYBOX_DAEMONS_PKGDIR)/busybox-daemons.config > $(@D)/.daemons-keys
+	grep -v -w -F -f $(@D)/.daemons-keys $(@D)/.config > $(@D)/.config.base
+	cat $(@D)/.config.base $(BUSYBOX_DAEMONS_PKGDIR)/busybox-daemons.config \
+		> $(@D)/.config
+	yes "" | $(BUSYBOX_MAKE_ENV) $(MAKE) $(BUSYBOX_MAKE_OPTS) -C $(@D) oldconfig
 	for opt in INIT INETD SYSLOGD UDHCPD NOMMU STATIC; do \
 		grep -qx "CONFIG_$${opt}=y" $(@D)/.config || { \
 			echo "busybox-daemons: CONFIG_$${opt} is not set" >&2; exit 1; }; \
