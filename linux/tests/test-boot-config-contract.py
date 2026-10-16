@@ -40,6 +40,14 @@ def main() -> None:
     assert 'BOOT_COMMIT="/usr/sbin/easystick-boot-commit"' in bootsync
     assert '"$BOOT_COMMIT" "$SNAP_IMG"' in bootsync
     assert "forced_eject" not in bootsync
+    # An edit made over USB must reach flash without a console: bootsync
+    # reboots after staging an image that flash does not hold yet.
+    assert 'FLASH_HASH_FILE="/run/.boot-flash-md5"' in bootsync
+    assert "auto_reboot_enabled" in bootsync
+    assert "\n\t\treboot\n" in bootsync
+    assert "/run/.boot-flash-md5" in read(
+        "linux/m3-lab/rootfs-overlay/etc/init.d/S05easystick-tmpfs"
+    )
     assert "mount -t vfat" not in updater
     assert "BOOT_IMG" not in updater
     assert "boot-snap.img" not in network

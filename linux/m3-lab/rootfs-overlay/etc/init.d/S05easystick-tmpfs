@@ -251,6 +251,9 @@ start() {
 			fi
 		else
 			es_log "ES_BOOT_FAT: successfully restored valid FAT image from PSRAM"
+			# What flash holds; bootsync reboots to commit only an image
+			# that differs from it.
+			md5sum /tmp/boot.img 2>/dev/null | cut -d' ' -f1 > /run/.boot-flash-md5 || true
 		fi
 	fi
 	# The image holds credentials.txt and the Wi-Fi PSK (#11).

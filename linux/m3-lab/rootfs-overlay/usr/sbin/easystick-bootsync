@@ -60,6 +60,20 @@ lun_state() {
 	esac
 }
 
+FLASH_HASH_FILE="/run/.boot-flash-md5"
+
+# auto_reboot=no in config.txt keeps a staged image in PSRAM until the next
+# manual reboot, as before.
+auto_reboot_enabled() {
+	[ -f /tmp/config.txt ] || return 0
+	while IFS= read -r l || [ -n "$l" ]; do
+		case "$l" in
+			auto_reboot=no|auto_reboot=no[!A-Za-z0-9_]*) return 1 ;;
+		esac
+	done < /tmp/config.txt
+	return 0
+}
+
 reattach() {
 	if ! $LUN_CTL reattach >/dev/null 2>&1; then
 		log "ERROR: could not reattach boot.img; USB storage remains unavailable"
@@ -197,6 +211,17 @@ while true; do
 		continue
 	fi
 	LAST_STATE="host-owned"
+	# A staged image survives only a software reboot, and with only the
+	# carrier's USB-A attached nobody can run one: unplugging dropped every
+	# edit.  Reboot now unless flash already holds this image.
+	FLASH_HASH=""
+	[ -f "$FLASH_HASH_FILE" ] && read -r FLASH_HASH < "$FLASH_HASH_FILE"
+	if [ "$NEW_HASH" != "$FLASH_HASH" ] && auto_reboot_enabled; then
+		log "Rebooting to commit the image to flash (auto_reboot=no in config.txt turns this off)"
+		tick 2
+		reboot
+		while true; do tick 60; done
+	fi
 	if [ "$CONFIG_CHANGED" -eq 1 ]; then
 		log "Configuration changed; reloading network"
 		/etc/init.d/S40network reload >/dev/null 2>&1 &
