@@ -2,9 +2,9 @@ diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
 index 67fa8b8b1052..33d1c8ce0511 100644
 --- a/drivers/mmc/host/dw_mmc.c
 +++ b/drivers/mmc/host/dw_mmc.c
-@@ -1313,6 +1314,381 @@ static int dw_mci_get_cd(struct mmc_host *mmc)
- 	struct dw_mci *host = mmc_priv(mmc);
- 	int gpio_cd = mmc_gpio_get_cd(mmc);
+@@ -1756,6 +1756,382 @@ static void dw_mci_start_request(struct dw_mci *host, struct mmc_command *cmd)
+ 	host->es_cmd53_active = 0;
+ }
  
 +
 +/* EasyStick C/0053: CMD53 retention BB (DMA, torn-safe, post-done crumbs). */
@@ -381,26 +381,27 @@ index 67fa8b8b1052..33d1c8ce0511 100644
 +}
 +
 +
- 	if (mmc->caps & MMC_CAP_NEEDS_POLL)
- 		return 1;
- 
-diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
-index 67fa8b8b1052..33d1c8ce0511 100644
---- a/drivers/mmc/host/dw_mmc.c
-+++ b/drivers/mmc/host/dw_mmc.c
-@@ -1330,6 +1706,7 @@ static int dw_mci_get_cd(struct mmc_host *mmc)
- static void dw_mci_adjust_fifoth(struct dw_mci *host, struct mmc_data *data)
++
+ static void dw_mci_start_request(struct dw_mci *host, struct mmc_command *cmd)
  {
- 	unsigned int blksz = data->blksz;
-+	easystick_cmd53_bb_begin(cmd);
- 	static const u32 mszs[] = {1, 4, 8, 16, 32, 64, 128, 256};
- 	u32 fifo_width = 1 << host->data_shift;
- 	u32 blksz_depth = blksz / fifo_width, fifoth_val;
+ 	struct mmc_request *mrq;
 diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
 index 67fa8b8b1052..33d1c8ce0511 100644
 --- a/drivers/mmc/host/dw_mmc.c
 +++ b/drivers/mmc/host/dw_mmc.c
-@@ -2212,25 +2671,37 @@ static void dw_mci_request_end(struct dw_mci *host, struct mmc_request *mrq)
+@@ -1772,6 +2148,7 @@ static void dw_mci_start_request(struct dw_mci *host, struct mmc_command *cmd)
+ 	host->data_status = 0;
+ 	host->dir_status = 0;
+ 	es_mmc_cmd53_mark_start(host, cmd);
++	easystick_cmd53_bb_begin(cmd);
+ 
+ 	data = cmd->data;
+ 	if (data) {
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index 67fa8b8b1052..33d1c8ce0511 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -2289,20 +2666,32 @@ static void dw_mci_request_end(struct dw_mci *host, struct mmc_request *mrq)
  	__acquires(&host->lock)
  {
  	struct mmc_host	*prev_mmc = host->mmc;
@@ -423,6 +424,7 @@ index 67fa8b8b1052..33d1c8ce0511 100644
 +
 +	bb_gen = easystick_cmd53_bb_mark_end_and_get_gen(mrq);
  	spin_unlock(&host->lock);
+ 	es_mmc_cmd53_emit_if_err(host, mrq);
  	mmc_request_done(prev_mmc, mrq);
 +	easystick_cmd53_bb_mark_bb2_gen(bb_gen);
  	spin_lock(&host->lock);
@@ -432,12 +434,6 @@ index 67fa8b8b1052..33d1c8ce0511 100644
  }
  
  static int dw_mci_command_complete(struct dw_mci *host, struct mmc_command *cmd)
- {
- 	u32 status = host->cmd_status;
- 
- 	host->cmd_status = 0;
- 
- 	/* Read the response from the card (up to 16 bytes) */
 diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
 index 67fa8b8b1052..33d1c8ce0511 100644
 --- a/drivers/mmc/host/dw_mmc.c
@@ -455,22 +451,7 @@ diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
 index 67fa8b8b1052..33d1c8ce0511 100644
 --- a/drivers/mmc/host/dw_mmc.c
 +++ b/drivers/mmc/host/dw_mmc.c
-@@ -2533,19 +3004,21 @@ static void dw_mci_work_func(struct work_struct *t)
- 		case STATE_DATA_BUSY:
- 			if (!dw_mci_clear_pending_data_complete(host)) {
- 				/*
--				 * If data error interrupt comes but data over
--				 * interrupt doesn't come within the given time.
--				 * in reading data state.
-+				 * Same write-side hole as STATE_SENDING_DATA:
-+				 * without DATA_OVER the request never ends.
- 				 */
--				if (host->dir_status == MMC_DATA_READ)
--					dw_mci_set_drto(host);
-+				dw_mci_set_drto(host);
- 				break;
- 			}
- 
+@@ -2601,7 +2990,11 @@ static void dw_mci_work_func(struct work_struct *t)
  			dw_mci_stop_fault_timer(host);
  			host->data = NULL;
  			set_bit(EVENT_DATA_COMPLETE, &host->completed_events);
@@ -486,7 +467,7 @@ diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
 index 67fa8b8b1052..33d1c8ce0511 100644
 --- a/drivers/mmc/host/dw_mmc.c
 +++ b/drivers/mmc/host/dw_mmc.c
-@@ -3127,6 +3600,7 @@ static void dw_mci_cmd_interrupt(struct dw_mci *host, u32 status)
+@@ -3183,6 +3576,7 @@ static void dw_mci_cmd_interrupt(struct dw_mci *host, u32 status)
  	smp_wmb(); /* drain writebuffer */
  
  	set_bit(EVENT_CMD_COMPLETE, &host->pending_events);
@@ -498,7 +479,7 @@ diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
 index 67fa8b8b1052..33d1c8ce0511 100644
 --- a/drivers/mmc/host/dw_mmc.c
 +++ b/drivers/mmc/host/dw_mmc.c
-@@ -3172,9 +3646,11 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
+@@ -3172,10 +3646,11 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
  		if (pending & DW_MCI_CMD_ERROR_FLAGS) {
  			spin_lock(&host->irq_lock);
  
@@ -506,7 +487,7 @@ index 67fa8b8b1052..33d1c8ce0511 100644
  			timer_delete(&host->cto_timer);
  			mci_writel(host, RINTSTS, DW_MCI_CMD_ERROR_FLAGS);
  			host->cmd_status = pending;
-+			es_mmc_cmd53_snap_irq(host, pending);
+ 			es_mmc_cmd53_snap_irq(host, pending);
  			smp_wmb(); /* drain writebuffer */
  			set_bit(EVENT_CMD_COMPLETE, &host->pending_events);
  
@@ -514,7 +495,7 @@ diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
 index 67fa8b8b1052..33d1c8ce0511 100644
 --- a/drivers/mmc/host/dw_mmc.c
 +++ b/drivers/mmc/host/dw_mmc.c
-@@ -3186,12 +3662,14 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
+@@ -3186,13 +3662,14 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
  			if (trace)
  				trace->data_error_seen = 1;
  
@@ -525,7 +506,7 @@ index 67fa8b8b1052..33d1c8ce0511 100644
  			/* if there is an error report DATA_ERROR */
  			mci_writel(host, RINTSTS, DW_MCI_DATA_ERROR_FLAGS);
  			host->data_status = pending;
-+			es_mmc_cmd53_snap_irq(host, pending);
+ 			es_mmc_cmd53_snap_irq(host, pending);
  			smp_wmb(); /* drain writebuffer */
  			set_bit(EVENT_DATA_ERROR, &host->pending_events);
  
@@ -598,3 +579,15 @@ index 67fa8b8b1052..33d1c8ce0511 100644
  		set_bit(EVENT_CMD_COMPLETE, &host->pending_events);
  		queue_work(system_bh_wq, &host->bh_work);
  		break;
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index 67fa8b8b1052..33d1c8ce0511 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -3737,6 +4131,7 @@ static void dw_mci_dto_timer(struct timer_list *t)
+ 			trace->data_error_seen = 1;
+ 		set_bit(EVENT_DATA_ERROR, &host->pending_events);
+ 		set_bit(EVENT_DATA_COMPLETE, &host->pending_events);
++		easystick_cmd53_bb_mark_dto();
+ 		queue_work(system_bh_wq, &host->bh_work);
+ 		break;
+ 	default:

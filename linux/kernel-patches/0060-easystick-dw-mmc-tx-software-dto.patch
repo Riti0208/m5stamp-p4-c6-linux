@@ -22,7 +22,27 @@ diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
 index 67fa8b8b1052..33d1c8ce0511 100644
 --- a/drivers/mmc/host/dw_mmc.c
 +++ b/drivers/mmc/host/dw_mmc.c
-@@ -3673,12 +4174,15 @@ static void dw_mci_dto_timer(struct timer_list *t)
+@@ -2516,12 +2987,10 @@ static void dw_mci_work_func(struct work_struct *t)
+ 		case STATE_DATA_BUSY:
+ 			if (!dw_mci_clear_pending_data_complete(host)) {
+ 				/*
+-				 * If data error interrupt comes but data over
+-				 * interrupt doesn't come within the given time.
+-				 * in reading data state.
++				 * Same write-side hole as STATE_SENDING_DATA:
++				 * without DATA_OVER the request never ends.
+ 				 */
+-				if (host->dir_status == MMC_DATA_READ)
+-					dw_mci_set_drto(host);
++				dw_mci_set_drto(host);
+ 				break;
+ 			}
+ 
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index 67fa8b8b1052..33d1c8ce0511 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -3673,6 +4174,9 @@ static void dw_mci_dto_timer(struct timer_list *t)
  		 * we should notify the driver to terminate current transfer
  		 * and report a data timeout to the core.
  		 */
@@ -32,9 +52,3 @@ index 67fa8b8b1052..33d1c8ce0511 100644
  		host->data_status = SDMMC_INT_DRTO;
  		trace = dw_mci_cmd53_trace_active(host);
  		if (trace)
- 			trace->data_error_seen = 1;
- 		set_bit(EVENT_DATA_ERROR, &host->pending_events);
- 		set_bit(EVENT_DATA_COMPLETE, &host->pending_events);
- 		queue_work(system_bh_wq, &host->bh_work);
- 		break;
- 	default:
