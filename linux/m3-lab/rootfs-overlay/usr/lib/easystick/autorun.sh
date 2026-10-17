@@ -197,7 +197,8 @@ autorun_start() {
 # Swap in AUTORUN_NEW when it differs from the running copy and restart.
 autorun_apply() {
 	[ -d "$AUTORUN_NEW" ] || return 0
-	find "$AUTORUN_NEW" -type f | sort | xargs md5sum | md5sum > "$AUTORUN_SUM.new" 2>/dev/null
+	# The main BusyBox find has no -type: md5sum skips the directories.
+	find "$AUTORUN_NEW" | sort | xargs md5sum 2>/dev/null | md5sum > "$AUTORUN_SUM.new"
 	new=""
 	old=""
 	read -r new _ 2>/dev/null < "$AUTORUN_SUM.new" || true

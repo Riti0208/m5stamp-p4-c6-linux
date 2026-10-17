@@ -85,6 +85,9 @@ def main() -> None:
     assert "for n in main.py main.sh main; do" in autorun
     assert '[ "$magic" != bFLT ]' in autorun
     assert "v=${v%%[!A-Za-z0-9._-]*}" in autorun
+    # The main BusyBox find has no -type; a failed find hashed nothing, so
+    # every program looked the same and a saved change never restarted it.
+    assert "find -type" not in autorun and " -type " not in autorun
     assert "/usr/sbin/easystick-autorun" in read("linux/m3-lab/post-build.sh")
     # The login message must not tell users to eject and reboot any more.
     motd = read("linux/m3-lab/rootfs-overlay/etc/motd")
