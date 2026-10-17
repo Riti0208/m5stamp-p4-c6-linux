@@ -98,18 +98,22 @@ Every board gets its own credentials on first boot; no SSID or password is share
 
 ### 1. Download Release Package
 
-> **v0.2.4** is built and published the same way as v0.2.2 and v0.2.3: the assets
+> **v0.2.5** is built and published the same way as v0.2.2 to v0.2.4: the assets
 > are the CI build that was flashed and checked on hardware, and the tag run refuses
-> any asset whose hash is not in `linux/tests/v0.2.4-hardware-validation-2026-10-17.md`.
-> Changes since v0.2.3:
-> - Edits to the USB drive are saved to flash about 3 s after the host stops
->   writing, with no eject and no reboot: the kernel writes the inactive A/B slot
->   itself (`0072`).  Wi-Fi settings, the m5 password and `authorized_keys` apply
->   at once (`linux/tests/bootflash-2026-10-17.md`).
-> - `vi` without a file name, or any program that passes a bad pointer to a system
->   call, no longer freezes the board; the call returns `EFAULT` (`0071`,
->   `linux/tests/vi-null-pointer-2026-10-17.md`).
-> - The ELF `getconf`, which the bFLT kernel cannot run, is no longer installed.
+> any asset whose hash is not in `linux/tests/v0.2.5-hardware-validation-2026-10-17.md`.
+> Changes since v0.2.4 (#34):
+> - Pico-style autorun: `main.py`, `main.sh` or a bFLT `main` saved on the USB
+>   drive runs as `m5` at boot and restarts when a new version is saved
+>   ([details](#5-autorun-from-the-usb-drive-pico-style)).  Changing only the
+>   `autorun=` lines in `config.txt` does not reload Wi-Fi.
+> - MicroPython now has the unix port's standard modules (`time`, `socket`,
+>   `json`, `asyncio`, ...); the previous build had only `os` and `sys`.
+> - About 65 more commands after login (`awk`, `less`, `top`, `free`, `tar`,
+>   `wget`, `timeout`, ...) from `busybox-tools`, and an SSH login message that
+>   lists them.  `timeout` is patched to work on NOMMU.
+> - Fixed: after Wi-Fi settings were changed from the drive, `/etc/resolv.conf`
+>   was readable only by root until the next boot, so `m5` could not resolve
+>   host names.
 >
 > **Known issue in v0.2.3 and earlier:** `vi` started without a file name freezes
 > the board until the watchdog resets it; start `vi` with a file name
@@ -120,8 +124,8 @@ Every board gets its own credentials on first boot; no SSID or password is share
 > the GPL corresponding source (`*-legal-info.tar.gz`, #31).
 
 Download either the monolithic 16MB raw flash image or the partition zip package from the [Releases](https://github.com/tsuyoshi-otake/m5stamp-p4-c6-linux/releases) page:
-- **`m5stamp-p4-c6-linux-smp-v0.2.4-16mb.bin.gz`**: Single 16MB raw flash image (simplest, flash to `0x0`).
-- **`m5stamp-p4-c6-linux-smp-v0.2.4.zip`**: Individual partition binaries with automated PowerShell flash script.
+- **`m5stamp-p4-c6-linux-smp-v0.2.5-16mb.bin.gz`**: Single 16MB raw flash image (simplest, flash to `0x0`).
+- **`m5stamp-p4-c6-linux-smp-v0.2.5.zip`**: Individual partition binaries with automated PowerShell flash script.
 
 ### 2. Flash using `esptool.py`
 
@@ -129,8 +133,8 @@ Connect the M5Stamp-P4 via its USB-C port to your computer. Identify your serial
 
 #### Option A: Monolithic 16MB Raw Image Flash (Recommended)
 ```bash
-gzip -d m5stamp-p4-c6-linux-smp-v0.2.4-16mb.bin.gz
-esptool.py --chip esp32p4 --port COM10 --baud 460800 write_flash 0x0 m5stamp-p4-c6-linux-smp-v0.2.4-16mb.bin
+gzip -d m5stamp-p4-c6-linux-smp-v0.2.5-16mb.bin.gz
+esptool.py --chip esp32p4 --port COM10 --baud 460800 write_flash 0x0 m5stamp-p4-c6-linux-smp-v0.2.5-16mb.bin
 ```
 
 #### Option B: Release PowerShell Script
@@ -409,7 +413,7 @@ Launch the interactive REPL anytime by running `python3`:
 
 ```bash
 $ python3
-MicroPython v1.22.2 on 2026-09-05; linux [RV32-NOMMU] version
+MicroPython v1.22.2 on 2026-10-17; linux [GCC 13.4.0] version
 Use Ctrl-D to exit, Ctrl-E for paste mode
 >>> 2 ** 16
 65536
@@ -417,7 +421,7 @@ Use Ctrl-D to exit, Ctrl-E for paste mode
 >>> print("Platform:", sys.platform)
 Platform: linux
 >>> print("Version :", sys.version)
-Version : 3.4.0; MicroPython v1.22.2 on 2026-09-05
+Version : 3.4.0; MicroPython v1.22.2 on 2026-10-17
 >>> [x * x for x in range(8)]
 [0, 1, 4, 9, 16, 25, 36, 49]
 ```
@@ -625,24 +629,24 @@ This compiles:
 
 ---
 
-## SHA-256 Checksums (v0.2.4)
+## SHA-256 Checksums (v0.2.5)
 
 ```text
 Raw 16MB Monolithic Image:
-e8cd3ea88a0ae70c4d3230a8e55006f94088ee234957d99c23364ed0dc436778  m5stamp-p4-c6-linux-smp-v0.2.4-16mb.bin.gz
-5e336ef0dfea6f879fe9a55a869fc7189f760f0073f1315db0b64c4f1498d922  m5stamp-p4-c6-linux-smp-v0.2.4-16mb.bin (uncompressed)
+1081d463e45fc2074124fbcc3e055ac608770a9e86f0f77255cd0837fc094d91  m5stamp-p4-c6-linux-smp-v0.2.5-16mb.bin.gz
+58de1b7bfe5cc0095d728e078134e07776e4f659f6c89fe3cb807517538d734b  m5stamp-p4-c6-linux-smp-v0.2.5-16mb.bin (uncompressed)
 
 Partition Archive:
-fa056dc76ab5abf47b9cda194f2756b301b4d971732bf191b82315126eea8660  m5stamp-p4-c6-linux-smp-v0.2.4.zip
+3c9349822d915ea5f37e077c12162286e9292e8174b88dd6b19f2770324336c0  m5stamp-p4-c6-linux-smp-v0.2.5.zip
 
 Individual Partitions:
-d70abad583ade9d7ec6e82659b0fa75804b635ca71b3caedbe4da839f393fb36  bootloader.bin
+bb3b7a865118960ac5668dd69b3c56a0e06d7350455b4270ddbf97347fc4bd98  bootloader.bin
 7937656f29960d53b63010b51836e233d092e067e320cde5778ec43e04218870  partition-table.bin
-ec5715bbc1db6fa02bc02788f2c934800bc355dc4772a190c86393d5dda8a93f  boot-shim.bin
-2135d50a9b9fc110f4e996cf7992ec625ae1245e3b87991af2c875ec30159355  Image
-717809f5ff67ba178cc61d70537615133e2dcd70a4d59eb31e46099cfc1d8e5b  rootfs.squashfs
+4c5b438c339df936b9456e6588b642eb0c4eba779a080333ddd3555c8c135ef3  boot-shim.bin
+10a8a1505c6f9836932c49e32e17d8ad0a7ae61205f43ee28cd7c384d301337e  Image
+57157678ce36b2aa0bc507c3335b31fa70dc0ed71fdc0d97dc4fe4cf76c3af83  rootfs.squashfs
 a12b18e1347ade36c499c79338ff7125bd4140bf56c64ecfedce8f93b4d3a852  easystick-stamp-p4.dtb
-ae54332eca269e70729e1a30a6eb9a8b567e82cdb35fbe6bcb687cdfd9f0a311  boot.img
+62d9816fa7156d42cf2c9752f2804e69345109486a15f416925b5ca1a9bcc992  boot.img
 ```
 
 ---
