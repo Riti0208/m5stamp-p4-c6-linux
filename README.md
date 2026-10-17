@@ -29,6 +29,7 @@ Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SS
   - **`vi` Editor**: Full-featured BusyBox `vi` with search, undo, visual buffers, and syntax assistance.
   - **Shell commands**: the main BusyBox carries the shell and the commands scripts use (`grep`, `sed`, `find`, `ps`, `df`, `dmesg`, `ping`, `nc`, ...). The m3-lab image adds `busybox-tools`, a third BusyBox with about 65 everyday commands the main one leaves out to stay under the 512 KB NOMMU allocation: `awk`, `less`, `top`, `free`, `uptime`, `pgrep`/`pkill`, `watch`, `timeout`, `stat`, `diff`, `patch`, `hexdump`, `xxd`, `tar`, `gzip`, `unzip`, `wget` (HTTP only), `nslookup`, `traceroute`, `ip` and more. It is loaded only while one of them runs (about 430 KB of the user pool). `sudo`, `nano`, `curl`, `file`, `dig` and `lsblk` are not available: they need an MMU, a wide-character toolchain or more RAM than the board has. The SSH login message (`/etc/motd`) lists the common commands by group; `busybox --list` and `busybox-tools --list` print everything.
   - **MicroPython (`python3`)**: MicroPython v1.22.2 compiled with bFLT Load-to-Ram (`-r`) and position-independent code (`-fPIC`) for stable NOMMU execution.
+  - **Pico-style autorun**: `main.py`, `main.sh` or a bFLT `main` saved on the USB drive runs as `m5` at boot and restarts when a new version is saved ([details](#5-autorun-from-the-usb-drive-pico-style)).
   - **Writable Filesystem (OverlayFS)**: While the root filesystem is SquashFS (read-only for durability), RAM-backed OverlayFS is mounted on `/home`, `/root`, and `/var/lib` so users can create and edit scripts during the current boot. Its contents are lost when power is removed.
   - **USB Mass Storage (`/boot` drive, optional hardware)**: With the [optional EasyStick carrier](#optional-hardware-easystick-usb-mass-storage-carrier), its Type-A USB connection (GPIO26/27) exposes a FAT-formatted 256KB `/boot` configuration drive to Windows/Mac/Linux hosts. Save a file and, a few seconds later, the board validates the drive, applies the settings and writes it to redundant A/B flash slots. No eject or reboot is needed.
 - **Kernel & SoC Stabilization**:
@@ -487,6 +488,49 @@ with open("/home/m5/log.txt", "w") as f:
 with open("/home/m5/log.txt", "r") as f:
     print("Logged message:", f.read().strip())
 ```
+
+### 5. Autorun from the USB drive (Pico-style)
+
+Put a program on the `EASYSTICK` drive (m3-lab image) and save: it runs as
+user `m5` at every boot, and a saved new version replaces the running one a
+few seconds later, with no eject or reboot. The first of these runs:
+
+| File on the drive | Runs as |
+| :--- | :--- |
+| `main.py` | `python3 main.py` (MicroPython) |
+| `main.sh` | `sh main.sh` (BusyBox shell; CRLF line ends are fine) |
+| `main` | a RISC-V NOMMU flat binary (bFLT, see below) |
+
+- The other `*.py` files at the top of the drive and a `lib/` folder are copied
+  along, so `import mymodule` works. The copy, `/run/autorun`, is the working
+  directory and belongs to `m5`; nothing is written back to the drive.
+- Output goes to `/run/autorun.log` (64 KB, one older copy in
+  `/run/autorun.log.1`). Over SSH: `easystick-autorun log` follows it,
+  `easystick-autorun status|stop|start|restart` controls the program.
+- A program that exits stays stopped, as on a Pico. Saving the drive restarts it
+  only when the program or its settings changed; editing `credentials.txt`
+  alone leaves it running.
+- `config.txt` settings: `autorun=off` turns autorun off, `autorun=NAME` runs
+  that file from the drive instead (`.py`, `.sh` or a binary),
+  `autorun_restart=yes` restarts the program 5 s after it exits.
+- To stop a program for good, delete or rename it on the drive and save.
+
+The drive holds 256 KB in total, so programs stay small. The MicroPython here
+is the Unix port: there is no `machine.Pin`. A program can use files, sockets
+and the other Linux interfaces that `m5` can use. A program that uses up the
+memory can also starve `sshd`; removing it from the drive recovers.
+
+A binary must be a bFLT file built for this NOMMU CPU. An ordinary Linux ELF
+does not run here, and autorun logs `not a riscv32 NOMMU bFLT binary` instead
+of starting it. Build with the Buildroot toolchain from a source build
+(`output/host/bin`):
+
+```bash
+riscv32-linux-gcc -Os -Wl,-elf2flt="-r -s 16384" -o main hello.c
+head -c 4 main   # bFLT
+```
+
+A `printf`/`sleep` hello world is about 85 KB.
 
 | Signal | ESP32-P4 Pin | ESP32-C6 Pin | Function |
 | :--- | :--- | :--- | :--- |

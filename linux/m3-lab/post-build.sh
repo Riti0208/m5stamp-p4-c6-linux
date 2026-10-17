@@ -29,6 +29,8 @@ for path in \
 	"${TARGET_DIR}/usr/sbin/easystick-usb-lun" \
 	"${TARGET_DIR}/usr/sbin/easystick-watchdog" \
 	"${TARGET_DIR}/usr/sbin/easystick-update-status" \
+	"${TARGET_DIR}/usr/sbin/easystick-autorun" \
+	"${TARGET_DIR}/usr/lib/easystick/autorun.sh" \
 	"${TARGET_DIR}/etc/inetd.conf"; do
 	if [ ! -f "${path}" ]; then
 		echo "M3-lab file missing from rootfs: ${path}" >&2
@@ -46,6 +48,7 @@ chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-usb-lun"
 chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-watchdog"
 chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-update-status"
 chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-info"
+chmod 0755 "${TARGET_DIR}/usr/sbin/easystick-autorun"
 chmod 0644 "${TARGET_DIR}/etc/inetd.conf"
 
 # BusyBox applet reduction (busybox.fragment) removed start-stop-daemon and

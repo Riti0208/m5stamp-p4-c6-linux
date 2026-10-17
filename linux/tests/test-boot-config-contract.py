@@ -69,10 +69,29 @@ def main() -> None:
     for applet in ("AWK", "LESS", "TOP", "FREE", "TAR", "WGET", "IP", "PGREP"):
         assert f"CONFIG_{applet}=y\n" in tools_config, applet
     assert "# CONFIG_SHELL_ASH is not set" in tools_config
+    # Pico-style autorun (#34): S05 stages the drive's program, bootsync
+    # starts it and restarts it only when the copy changed, always as m5.
+    autorun = read("linux/m3-lab/rootfs-overlay/usr/lib/easystick/autorun.sh")
+    assert "CONFIG_CHPST=y\n" in tools_config
+    assert ". /usr/lib/easystick/autorun.sh" in bootsync
+    assert ". /usr/lib/easystick/autorun.sh" in s05
+    assert "if autorun_stage /boot; then" in s05
+    assert 'if ! autorun_stage "$MNT_POINT"; then' in bootsync
+    assert bootsync.count("autorun_apply") == 2
+    assert "autorun_trim_log" in bootsync
+    assert 'chpst -u "$AUTORUN_USER" -P -n 10' in autorun
+    assert 'chpst -u "$AUTORUN_USER" kill' in autorun
+    assert "AUTORUN_USER=m5\n" in autorun
+    assert "for n in main.py main.sh main; do" in autorun
+    assert '[ "$magic" != bFLT ]' in autorun
+    assert "v=${v%%[!A-Za-z0-9._-]*}" in autorun
+    assert "/usr/sbin/easystick-autorun" in read("linux/m3-lab/post-build.sh")
     # The login message must not tell users to eject and reboot any more.
     motd = read("linux/m3-lab/rootfs-overlay/etc/motd")
     assert "No eject or reboot is needed" in motd
     assert "busybox-tools --list" in motd
+    assert "easystick-autorun status" in motd
+    assert "### 5. Autorun from the USB drive (Pico-style)" in readme
     assert max(len(line) for line in motd.splitlines()) <= 78
     # A reused Buildroot output must not keep a stale boot-commit helper.
     assert '"$external_root"/package/*/src' in build

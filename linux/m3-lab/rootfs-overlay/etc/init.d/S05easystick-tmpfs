@@ -95,6 +95,8 @@ generate_credentials() {
 
 # apply_password and install_keys; bootsync uses them too.
 . /usr/lib/easystick/credentials.sh
+# autorun_stage (#34).
+. /usr/lib/easystick/autorun.sh
 
 start() {
 	es_log "ES_TMPFS BEGIN"
@@ -310,6 +312,13 @@ EOF
 		if [ -f /boot/config.txt ]; then
 			cp -f /boot/config.txt /tmp/config.txt 2>/dev/null || true
 			chmod 600 /tmp/config.txt 2>/dev/null || true
+		fi
+		# main.py/main.sh/main for autorun; bootsync starts it once the
+		# init scripts are done.
+		if autorun_stage /boot; then
+			es_log "ES_AUTORUN STAGED"
+		else
+			es_log "ES_AUTORUN FAIL: could not copy the program from the drive"
 		fi
 		# Flush and unmount /boot before exposing backing file to USB host
 		# to prevent concurrent filesystem cache corruption between Linux and Windows

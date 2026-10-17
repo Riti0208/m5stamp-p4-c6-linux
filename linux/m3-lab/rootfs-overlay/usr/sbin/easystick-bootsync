@@ -20,6 +20,8 @@ es_log() {
 
 # apply_password and install_keys, shared with S05easystick-tmpfs.
 . /usr/lib/easystick/credentials.sh
+# The drive's main.py/main.sh/main (#34).
+. /usr/lib/easystick/autorun.sh
 
 boot_hash() {
 	HASH=""
@@ -185,12 +187,18 @@ import_snapshot() {
 	done
 	RESET=0
 	{ [ -e "$MNT_POINT/factory-reset" ] || [ -e "$MNT_POINT/factory-reset.txt" ]; } && RESET=1
+	# A program that cannot be copied keeps the running one; the rest of
+	# the drive is still saved.
+	if ! autorun_stage "$MNT_POINT"; then
+		log "ERROR: could not copy the autorun program; the running one is kept"
+		rm -rf "$AUTORUN_NEW"
+	fi
 	if ! umount "$MNT_POINT" 2>/dev/null; then
 		log "ERROR: snapshot unmount failed"
 		VALID=0
 	fi
 	if [ "$VALID" -ne 1 ]; then
-		rm -rf "$SNAP_IMG" "$STAGE"
+		rm -rf "$SNAP_IMG" "$STAGE" "$AUTORUN_NEW"
 		release
 		return 1
 	fi
@@ -208,7 +216,7 @@ import_snapshot() {
 		2) log "Staged for the next reboot hash=$NEW_HASH (the kernel could not write flash)" ;;
 		*)
 			log "ERROR: durable boot-image staging failed; the drive is not saved"
-			rm -rf "$SNAP_IMG" "$STAGE"
+			rm -rf "$SNAP_IMG" "$STAGE" "$AUTORUN_NEW"
 			release
 			return 1
 			;;
@@ -251,6 +259,8 @@ import_snapshot() {
 		log "Configuration changed; reloading network"
 		/etc/init.d/S40network reload >/dev/null 2>&1 &
 	fi
+	# Restarts the program only when it or its autorun= settings changed.
+	autorun_apply
 	return 0
 }
 
@@ -260,14 +270,23 @@ while [ ! -f "$BOOT_IMG" ] || [ ! -x "$LUN_CTL" ]; do
 	tick 2
 done
 [ -f "$SEEN_REF" ] || touch -r "$BOOT_IMG" "$SEEN_REF"
+# At boot S05 staged the drive's program; the init scripts are done now.  A
+# respawned bootsync finds nothing staged and leaves the program alone.
+autorun_apply
 
 LAST_STATE=""
 PENDING=0
 QUIET=0
+LOG_TICKS=0
 log "Daemon started; drive changes are saved ${SETTLE_SECONDS} s after the host stops writing"
 
 while true; do
 	tick 1
+	LOG_TICKS=$((LOG_TICKS + 1))
+	if [ "$LOG_TICKS" -ge 30 ]; then
+		LOG_TICKS=0
+		autorun_trim_log
+	fi
 	lun_state
 	if [ "$LUN_STATE" != "$LAST_STATE" ]; then
 		log "ownership=$LUN_STATE"
