@@ -59,6 +59,9 @@ def main() -> None:
     assert "#define EXIT_STAGED_ONLY             2" in commit_helper
     assert "patches+=(0072-easystick-esp32p4-bootflash.patch)" in build
     assert '"$patch_name" == 0072-easystick-esp32p4-bootflash.patch ||' in build
+    # A reused Buildroot output must not keep a stale boot-commit helper.
+    assert '"$external_root"/package/*/src' in build
+    assert '"${pkg_name}-dirclean"' in build
     assert "CONFIG_ESP32P4_BOOTFLASH=y" in read("linux/linux.config")
     # Password and keys are applied live by bootsync and at boot by S05.
     assert ". /usr/lib/easystick/credentials.sh" in bootsync

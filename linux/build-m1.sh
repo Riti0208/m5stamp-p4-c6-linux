@@ -2165,6 +2165,19 @@ if [[ "$(cat "$dts_stamp" 2>/dev/null)" != "$dts_sum" ]]; then
 	fi
 	echo "$dts_sum" >"$dts_stamp"
 fi
+# A local-site package (package/<name>/src) is rsynced only when its build
+# directory is created, so a reused output keeps the old binary after its
+# source changes.  Discard that one package whenever its tree changes.
+for pkg_src in "$external_root"/package/*/src; do
+	[[ -d "$pkg_src" ]] || continue
+	pkg_name=$(basename -- "$(dirname -- "$pkg_src")")
+	pkg_sum=$(cd "$pkg_src/.." && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+	pkg_stamp="${br_output}/.easystick-pkg-${pkg_name}.sha256"
+	if [[ "$(cat "$pkg_stamp" 2>/dev/null)" != "$pkg_sum" ]]; then
+		make "${make_args[@]}" "${pkg_name}-dirclean"
+		echo "$pkg_sum" >"$pkg_stamp"
+	fi
+done
 if [[ "${EASYSTICK_LINUX_ONLY:-0}" == "1" ]]; then
 	make "${make_args[@]}" linux-dirclean
 	make "${make_args[@]}" linux
