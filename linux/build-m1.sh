@@ -2084,6 +2084,8 @@ if $lab_profile; then
 	set_config_value "${br_output}/.config" BR2_PACKAGE_EASYSTICK_RESPAWN y
 	# init, inetd, syslogd and udhcpd from a minimal second BusyBox (#23).
 	set_config_value "${br_output}/.config" BR2_PACKAGE_BUSYBOX_DAEMONS y
+	# awk, less, tar, wget, top, ... from a third BusyBox, loaded only when run.
+	set_config_value "${br_output}/.config" BR2_PACKAGE_BUSYBOX_TOOLS y
 else
 	set_config_value "${br_output}/.config" BR2_PACKAGE_EASYSTICK_BOOT_COMMIT "# BR2_PACKAGE_EASYSTICK_BOOT_COMMIT is not set"
 fi
@@ -2265,7 +2267,7 @@ if $ssh_profile; then
 			"BR2_PACKAGE_WIRELESS_REGDB=y" \
 			"BR2_PACKAGE_EASYSTICK_MDNS=y" \
 			"BR2_PACKAGE_EASYSTICK_RESPAWN=y" \
-			"BR2_PACKAGE_BUSYBOX_DAEMONS=y"; do
+			"BR2_PACKAGE_BUSYBOX_DAEMONS=y" \n			"BR2_PACKAGE_BUSYBOX_TOOLS=y"; do
 			grep -Fqx -- "${expected}" "${br_output}/.config" || {
 				echo "m3-lab config check failed: ${expected}" >&2
 				exit 1
@@ -2278,6 +2280,18 @@ if $ssh_profile; then
 		for link in sbin/init usr/sbin/inetd sbin/syslogd usr/sbin/udhcpd; do
 			[[ "$(readlink "${br_output}/target/${link}")" == */busybox-daemons ]] || {
 				echo "m3-lab check failed: ${link} does not point at busybox-daemons" >&2
+				exit 1
+			}
+		done
+		# Each exec copies the whole image; one allocation must fit 512 KB.
+		tools_bytes=$(stat -c %s "${br_output}/target/bin/busybox-tools")
+		(( tools_bytes < 480 * 1024 )) || {
+			echo "m3-lab check failed: busybox-tools is ${tools_bytes} bytes" >&2
+			exit 1
+		}
+		for link in usr/bin/awk usr/bin/less bin/tar usr/bin/wget usr/bin/top usr/bin/free; do
+			[[ "$(readlink "${br_output}/target/${link}")" == */busybox-tools ]] || {
+				echo "m3-lab check failed: ${link} does not point at busybox-tools" >&2
 				exit 1
 			}
 		done

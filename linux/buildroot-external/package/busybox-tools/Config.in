@@ -1,0 +1,10 @@
+config BR2_PACKAGE_BUSYBOX_TOOLS
+	bool "BusyBox build for the interactive tools"
+	depends on BR2_PACKAGE_BUSYBOX
+	help
+	  A third BusyBox with the everyday commands the main image leaves
+	  out to stay small (awk, less, tar, gzip, wget, top, free, pgrep,
+	  diff, ip, ...).  On NOMMU every exec copies its binary's text, so
+	  these stay out of the main BusyBox that every shell and script
+	  runs from, and cost memory only while one of them runs.
+	  Applets the main BusyBox has keep pointing at it.
