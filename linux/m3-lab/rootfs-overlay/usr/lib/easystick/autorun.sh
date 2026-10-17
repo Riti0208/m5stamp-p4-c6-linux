@@ -186,9 +186,13 @@ autorun_start() {
 	fi
 	echo "--- autorun: start $prog" >> "$AUTORUN_LOG"
 	cd "$AUTORUN_DIR" || return 1
-	HOME=/home/$AUTORUN_USER USER=$AUTORUN_USER LOGNAME=$AUTORUN_USER \
-		MICROPYPATH="$AUTORUN_DIR/lib:.frozen:/home/$AUTORUN_USER/.micropython/lib:/usr/lib/micropython" \
-		"$@" >> "$AUTORUN_LOG" 2>&1 < /dev/null &
+	# A login's umask, not the 077 that easystick-bootsync runs under.
+	(
+		umask 022
+		export HOME=/home/$AUTORUN_USER USER=$AUTORUN_USER LOGNAME=$AUTORUN_USER
+		export MICROPYPATH="$AUTORUN_DIR/lib:.frozen:/home/$AUTORUN_USER/.micropython/lib:/usr/lib/micropython"
+		exec "$@"
+	) >> "$AUTORUN_LOG" 2>&1 < /dev/null &
 	echo "$!" > "$AUTORUN_PID"
 	cd /
 	es_log "autorun: started $prog pid $!"

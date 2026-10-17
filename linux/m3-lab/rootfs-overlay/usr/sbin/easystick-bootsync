@@ -275,7 +275,8 @@ import_snapshot() {
 	fi
 	if [ "$NET_CHANGED" -eq 1 ]; then
 		log "Configuration changed; reloading network"
-		/etc/init.d/S40network reload >/dev/null 2>&1 &
+		# umask 022: udhcpc writes resolv.conf, which m5 must read.
+		( umask 022; exec /etc/init.d/S40network reload ) >/dev/null 2>&1 &
 	fi
 	# Restarts the program only when it or its autorun= settings changed.
 	autorun_apply

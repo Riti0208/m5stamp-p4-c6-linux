@@ -99,6 +99,11 @@ def main() -> None:
     # Editing autorun= must not reload Wi-Fi; the README build line needs -fPIC.
     assert "net_settings_changed \"$STAGE/$name\" \"/tmp/$name\"" in bootsync
     assert "riscv32-linux-gcc -Os -fPIC -Wl,-elf2flt" in readme
+    # bootsync runs under umask 077; a network reload from it wrote resolv.conf
+    # 0600, so m5 could not resolve names.  Its children get a login umask.
+    assert "( umask 022; exec /etc/init.d/S40network reload )" in bootsync
+    assert "/etc/init.d/S40network reload >/dev/null 2>&1 &" not in bootsync
+    assert "\t\tumask 022\n" in autorun
     # The login message must not tell users to eject and reboot any more.
     motd = read("linux/m3-lab/rootfs-overlay/etc/motd")
     assert "No eject or reboot is needed" in motd
