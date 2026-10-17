@@ -1,8 +1,13 @@
 #define _GNU_SOURCE
 /*
- * Stage a verified boot image in PSRAM for boot-shim's next-reboot A/B
- * commit.  This program never writes flash.  The request's commit word is
- * written last, so an interrupted staging operation is ignored by firmware.
+ * Stage a verified boot image in PSRAM for boot-shim's A/B commit, then ask
+ * the kernel to do that commit now (/sys/kernel/easystick/boot_commit, patch
+ * 0072).  The request's commit word is written last, so an interrupted
+ * staging operation is ignored by firmware.  If the kernel cannot write
+ * flash, the request stays and boot-shim commits it at the next reboot.
+ *
+ * Exit status: 0 written to flash, 2 staged for the next reboot only,
+ * 1 not staged.
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -21,6 +26,8 @@
 #define EASYSTICK_REQUEST_MAGIC      UINT32_C(0x45534243) /* "ESBC" */
 #define EASYSTICK_REQUEST_VERSION    UINT32_C(1)
 #define EASYSTICK_REQUEST_COMMIT     UINT32_C(0x434f4d4d) /* "COMM" */
+#define EASYSTICK_FLASH_COMMIT       "/sys/kernel/easystick/boot_commit"
+#define EXIT_STAGED_ONLY             2
 
 struct easystick_commit_request {
 	uint32_t magic;
@@ -121,6 +128,25 @@ static void publish_request(volatile struct easystick_commit_request *request,
 	__sync_synchronize();
 }
 
+/* The kernel writes the staged image to the inactive slot and switches. */
+static int commit_to_flash(void)
+{
+	int fd = open(EASYSTICK_FLASH_COMMIT, O_WRONLY | O_CLOEXEC);
+	ssize_t written;
+	int err;
+
+	if (fd < 0)
+		return -1;
+	written = write(fd, "1", 1);
+	err = errno;
+	close(fd);
+	if (written != 1) {
+		errno = written < 0 ? err : EIO;
+		return -1;
+	}
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	const char *mem_path = "/dev/mem";
@@ -193,7 +219,14 @@ int main(int argc, char **argv)
 	}
 	fprintf(stderr, "boot commit: staged %u bytes, crc32=%08" PRIx32 "\n",
 		EASYSTICK_IMAGE_BYTES, expected_crc);
-	rc = EXIT_SUCCESS;
+	if (commit_to_flash() == 0) {
+		fprintf(stderr, "boot commit: written to flash\n");
+		rc = EXIT_SUCCESS;
+	} else {
+		fprintf(stderr, "boot commit: flash write unavailable (%s); "
+			"saved at the next reboot\n", strerror(errno));
+		rc = EXIT_STAGED_ONLY;
+	}
 out:
 	if (request_map != NULL)
 		munmap(request_map, sizeof(struct easystick_commit_request));
