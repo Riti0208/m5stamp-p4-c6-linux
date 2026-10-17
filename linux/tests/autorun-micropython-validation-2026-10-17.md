@@ -71,3 +71,37 @@ written it to flash, and the board came back with the previous drive (and
 `mode=off`).  That is the expected behaviour: the drive is saved only after
 the `[bootsync] Saved to flash` line, the same as waiting for a USB stick
 to finish writing.  After that line, the reset above autostarted the program.
+
+## busybox-tools commands
+
+`free`, `awk`, `xxd`, `nslookup` (A records), `tar czf`/`tar tzf`, `less`,
+`top`, `wget` and `pgrep` are links to `busybox-tools` and ran as `m5`.
+`/etc/motd` shows the Autorun lines.  `python3` reports `MicroPython
+v1.22.2`.
+
+`timeout` did not work on the 4e03b79 image: `timeout 2 sleep 8` took 8 s
+and exited 0.  BusyBox re-executes itself on NOMMU to start the watcher,
+but it put `-pPID` after the duration, where getopt32 had already stopped,
+so the watcher never ran.  68b361f patches busybox-tools to re-exec as
+`timeout -pPID DURATION PROG`.
+
+## Candidate with the timeout fix
+
+Built from 68b361f (EXIT=0, the patch applied to busybox-tools) and flashed
+the same way; 11/11 boot-log checks passed.
+
+```
+7b1ae08da94d2055c62179b5975deedf34a29b62551e8eec82dac62bad05b57e  Image
+3e56fb0e580f93cba2160c6ff39f6030af87fe2a56ee0d9ac4251f600309ebd2  rootfs.squashfs
+7bd0ed9b2c69b3d005c6446f9667837ff23cf6a47b8c97b9ce1bbe8313d83499  boot.img
+3349c37e1905e9a73b7b8d92b0f15d182b3866fb64d9ddc460ee5668c62718e0  boot-shim.bin
+a12b18e1347ade36c499c79338ff7125bd4140bf56c64ecfedce8f93b4d3a852  easystick-stamp-p4.dtb
+```
+
+| Check | Result |
+|---|---|
+| `timeout 2 sleep 8` | `Terminated`, exit 143 after 2 s |
+| `timeout 5 sleep 1` | exit 0 after 1 s |
+| `timeout -s KILL 1 sleep 4` | `Killed`, exit 137 |
+| Watchers left over | none |
+| `main.py` + `lib/` on the drive | started (`main.py v1 start: helper from lib/`, `http b'HTTP/1.1 200 OK'`), stopped when removed; `config.txt` md5 back to its original value |
