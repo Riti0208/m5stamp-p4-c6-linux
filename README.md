@@ -96,28 +96,30 @@ Every board gets its own credentials on first boot; no SSID or password is share
 
 ### 1. Download Release Package
 
-> **v0.2.3** is built and published the same way as v0.2.2: the assets are the CI
-> build that was flashed and checked on hardware, and the tag run refuses any asset
-> whose hash is not in `linux/tests/v0.2.3-hardware-validation-2026-10-16.md`.
-> Changes since v0.2.2:
-> - The resident init, inetd, syslogd and udhcpd run from `busybox-daemons`, a
->   four-applet BusyBox (192 KB each instead of 496 KB), which leaves about 1 MB
->   more of the NOMMU user pool free: one more concurrent SSH session (#23).
-> - `sdio_mhz=` in `config.txt` selects the C6 SDIO clock (1–40 MHz); the DTS cap
->   is now 40 MHz, while 5 MHz stays the default (#21).
+> **v0.2.4** is built and published the same way as v0.2.2 and v0.2.3: the assets
+> are the CI build that was flashed and checked on hardware, and the tag run refuses
+> any asset whose hash is not in `linux/tests/v0.2.4-hardware-validation-2026-10-17.md`.
+> Changes since v0.2.3:
+> - Edits to the USB drive are saved to flash about 3 s after the host stops
+>   writing, with no eject and no reboot: the kernel writes the inactive A/B slot
+>   itself (`0072`).  Wi-Fi settings, the m5 password and `authorized_keys` apply
+>   at once (`linux/tests/bootflash-2026-10-17.md`).
+> - `vi` without a file name, or any program that passes a bad pointer to a system
+>   call, no longer freezes the board; the call returns `EFAULT` (`0071`,
+>   `linux/tests/vi-null-pointer-2026-10-17.md`).
+> - The ELF `getconf`, which the bFLT kernel cannot run, is no longer installed.
 >
-> **Known issue in v0.2.3 and earlier:** `vi` started without a file name, or any
-> program that passes a bad pointer to a system call, freezes the board until the
-> watchdog resets it. Start `vi` with a file name (`vi notes.txt`) on those
-> releases. `main` fixes it (`0071`, `linux/tests/vi-null-pointer-2026-10-17.md`).
+> **Known issue in v0.2.3 and earlier:** `vi` started without a file name freezes
+> the board until the watchdog resets it; start `vi` with a file name
+> (`vi notes.txt`) on those releases.
 >
 > v0.2.2 added the A/B `/boot` slots and metadata (`boot_alt`, `bootmeta*`) that the
 > `v0.2.1-smp` binaries lacked (#8), a debug bundle (`System.map`, `vmlinux`) and
 > the GPL corresponding source (`*-legal-info.tar.gz`, #31).
 
 Download either the monolithic 16MB raw flash image or the partition zip package from the [Releases](https://github.com/tsuyoshi-otake/m5stamp-p4-c6-linux/releases) page:
-- **`m5stamp-p4-c6-linux-smp-v0.2.3-16mb.bin.gz`**: Single 16MB raw flash image (simplest, flash to `0x0`).
-- **`m5stamp-p4-c6-linux-smp-v0.2.3.zip`**: Individual partition binaries with automated PowerShell flash script.
+- **`m5stamp-p4-c6-linux-smp-v0.2.4-16mb.bin.gz`**: Single 16MB raw flash image (simplest, flash to `0x0`).
+- **`m5stamp-p4-c6-linux-smp-v0.2.4.zip`**: Individual partition binaries with automated PowerShell flash script.
 
 ### 2. Flash using `esptool.py`
 
@@ -125,8 +127,8 @@ Connect the M5Stamp-P4 via its USB-C port to your computer. Identify your serial
 
 #### Option A: Monolithic 16MB Raw Image Flash (Recommended)
 ```bash
-gzip -d m5stamp-p4-c6-linux-smp-v0.2.3-16mb.bin.gz
-esptool.py --chip esp32p4 --port COM10 --baud 460800 write_flash 0x0 m5stamp-p4-c6-linux-smp-v0.2.3-16mb.bin
+gzip -d m5stamp-p4-c6-linux-smp-v0.2.4-16mb.bin.gz
+esptool.py --chip esp32p4 --port COM10 --baud 460800 write_flash 0x0 m5stamp-p4-c6-linux-smp-v0.2.4-16mb.bin
 ```
 
 #### Option B: Release PowerShell Script
@@ -566,24 +568,24 @@ This compiles:
 
 ---
 
-## SHA-256 Checksums (v0.2.3)
+## SHA-256 Checksums (v0.2.4)
 
 ```text
 Raw 16MB Monolithic Image:
-ec83ff3f76abd5471f26c968df9e2a48af00c205429021687cf7f5508699875f  m5stamp-p4-c6-linux-smp-v0.2.3-16mb.bin.gz
-756f8d3a7bae3d70b42ed9824c9794b8bce5ff2402b159c7b26ea2eba52cfac0  m5stamp-p4-c6-linux-smp-v0.2.3-16mb.bin (uncompressed)
+e8cd3ea88a0ae70c4d3230a8e55006f94088ee234957d99c23364ed0dc436778  m5stamp-p4-c6-linux-smp-v0.2.4-16mb.bin.gz
+5e336ef0dfea6f879fe9a55a869fc7189f760f0073f1315db0b64c4f1498d922  m5stamp-p4-c6-linux-smp-v0.2.4-16mb.bin (uncompressed)
 
 Partition Archive:
-89bb4da0752b9e058d8458310a17b3e07af4ddb6b7c90c4ae14c960b950787c8  m5stamp-p4-c6-linux-smp-v0.2.3.zip
+fa056dc76ab5abf47b9cda194f2756b301b4d971732bf191b82315126eea8660  m5stamp-p4-c6-linux-smp-v0.2.4.zip
 
 Individual Partitions:
-1afe94e6d902d59bcc34fde1b46d4c75c37d9ac7fb2a5bdf5ee069ef7c2f14c9  bootloader.bin
+d70abad583ade9d7ec6e82659b0fa75804b635ca71b3caedbe4da839f393fb36  bootloader.bin
 7937656f29960d53b63010b51836e233d092e067e320cde5778ec43e04218870  partition-table.bin
-63335ae0bc2536a85e939df78acf137efea59d5feacc83d925e5aa107b956d60  boot-shim.bin
-800dcfced0aaf35cba53a878177cf5c26a3700efd805e9918ce5c17436a1921b  Image
-b6d8cde9d1551ef2b3789cfca9741dcdf6a8c8e5bd54e8b7e615b0806ba0c749  rootfs.squashfs
+ec5715bbc1db6fa02bc02788f2c934800bc355dc4772a190c86393d5dda8a93f  boot-shim.bin
+2135d50a9b9fc110f4e996cf7992ec625ae1245e3b87991af2c875ec30159355  Image
+717809f5ff67ba178cc61d70537615133e2dcd70a4d59eb31e46099cfc1d8e5b  rootfs.squashfs
 a12b18e1347ade36c499c79338ff7125bd4140bf56c64ecfedce8f93b4d3a852  easystick-stamp-p4.dtb
-3d10e4f4fc01ce8b26ef5931a162c0cb6fd86f69e6732371b086924145bd6761  boot.img
+ae54332eca269e70729e1a30a6eb9a8b567e82cdb35fbe6bcb687cdfd9f0a311  boot.img
 ```
 
 ---
