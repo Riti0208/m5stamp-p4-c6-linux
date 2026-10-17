@@ -59,6 +59,16 @@ def main() -> None:
     assert "#define EXIT_STAGED_ONLY             2" in commit_helper
     assert "patches+=(0072-easystick-esp32p4-bootflash.patch)" in build
     assert '"$patch_name" == 0072-easystick-esp32p4-bootflash.patch ||' in build
+    # The everyday commands come from busybox-tools, not the main BusyBox.
+    assert 'BR2_PACKAGE_BUSYBOX_TOOLS y' in build
+    assert '"BR2_PACKAGE_BUSYBOX_TOOLS=y"; do' in build
+    assert "tools_bytes < 480 * 1024" in build
+    tools_config = read(
+        "linux/buildroot-external/package/busybox-tools/busybox-tools.config"
+    )
+    for applet in ("AWK", "LESS", "TOP", "FREE", "TAR", "WGET", "IP", "PGREP"):
+        assert f"CONFIG_{applet}=y\n" in tools_config, applet
+    assert "# CONFIG_SHELL_ASH is not set" in tools_config
     # A reused Buildroot output must not keep a stale boot-commit helper.
     assert '"$external_root"/package/*/src' in build
     assert '"${pkg_name}-dirclean"' in build
