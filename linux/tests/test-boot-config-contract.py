@@ -94,7 +94,7 @@ def main() -> None:
     assert "### 5. Autorun from the USB drive (Pico-style)" in readme
     assert max(len(line) for line in motd.splitlines()) <= 78
     # A reused Buildroot output must not keep a stale boot-commit helper.
-    assert '"$external_root"/package/*/src' in build
+    assert 'for pkg_dir in "$external_root"/package/*/; do' in build
     assert '"${pkg_name}-dirclean"' in build
     assert "CONFIG_ESP32P4_BOOTFLASH=y" in read("linux/linux.config")
     # Password and keys are applied live by bootsync and at boot by S05.

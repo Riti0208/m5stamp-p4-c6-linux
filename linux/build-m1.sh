@@ -2167,14 +2167,16 @@ if [[ "$(cat "$dts_stamp" 2>/dev/null)" != "$dts_sum" ]]; then
 	fi
 	echo "$dts_sum" >"$dts_stamp"
 fi
-# A local-site package (package/<name>/src) is rsynced only when its build
-# directory is created, so a reused output keeps the old binary after its
-# source changes.  Discard that one package whenever its tree changes.
-for pkg_src in "$external_root"/package/*/src; do
-	[[ -d "$pkg_src" ]] || continue
-	pkg_name=$(basename -- "$(dirname -- "$pkg_src")")
-	grep -q "_SITE_METHOD = local" "${pkg_src}/../${pkg_name}.mk" 2>/dev/null || continue
-	pkg_sum=$(cd "$pkg_src/.." && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+# Buildroot does not rebuild a package when its .mk, config or patches change,
+# and a local-site package (package/<name>/src) is rsynced only when its build
+# directory is created, so a reused output keeps the old binary (busybox-tools
+# kept its old applet list).  Discard that one package whenever its tree
+# changes.
+for pkg_dir in "$external_root"/package/*/; do
+	pkg_dir=${pkg_dir%/}
+	pkg_name=$(basename -- "$pkg_dir")
+	[[ -f "${pkg_dir}/${pkg_name}.mk" ]] || continue
+	pkg_sum=$(cd "$pkg_dir" && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
 	pkg_stamp="${br_output}/.easystick-pkg-${pkg_name}.sha256"
 	if [[ "$(cat "$pkg_stamp" 2>/dev/null)" != "$pkg_sum" ]]; then
 		make "${make_args[@]}" "${pkg_name}-dirclean"
