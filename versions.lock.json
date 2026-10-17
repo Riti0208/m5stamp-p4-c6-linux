@@ -31,14 +31,14 @@
     },
     "linux_base": {
       "repository": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
-      "tag": "v6.18.57",
-      "tag_object": "c05de972ca192e22ce318dd70ce8e990b9466f6d",
-      "commit": "2ff600d29ee478d0a8d46ef8a58afb5e038fe692",
-      "fetch_repository": "https://github.com/torvalds/linux.git",
+      "tag": "v7.2.11",
+      "tag_object": "8316c24ec1b77dba19ba072ca4fe251b36dc65d3",
+      "commit": "a2de78ee6ed8bf8cd99d177c74865a6e8c3cb6ea",
+      "fetch_repository": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
       "submodule_repository": "https://github.com/torvalds/linux.git",
       "submodule_path": "vendor/linux",
       "role": "kernel_base",
-      "notes": "commit is the peeled commit behind the annotated v6.18.57 tag"
+      "notes": "commit is the peeled commit behind the annotated v7.2.11 tag; the torvalds mirror does not carry stable tags, so fetch from the stable repo"
     },
     "buildroot": {
       "repository": "https://gitlab.com/buildroot.org/buildroot.git",

@@ -6,6 +6,8 @@
 
 A reproducible RISC-V NOMMU Linux 6.18 distribution (SMP kernel; the shipped image runs on one core, dual-core is experimental, see below) for the **M5Stack Stamp-P4** carrier board paired with **Stamp-AddOn C6** (via 4-bit SDIO interface).
 
+> **Branch note (`kernel-7.2`)**: this branch carries a work-in-progress port to Linux 7.2.11 (`versions.lock.json`, `vendor/linux`, and the Buildroot kernel version are pinned to 7.2.11). All hardware-validation claims in this document were measured on 6.18.x images; 7.2.11 has not been validated on hardware.
+
 Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SSH server, BusyBox `vi`, MicroPython (`python3`), and a writable OverlayFS on `/home`, `/root`, and `/var/lib`.
 
 <p align="center">
