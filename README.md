@@ -19,7 +19,7 @@ Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SS
 ## Key Features & Verified Hardware Capabilities
 
 - **SoC Target**: ESP32-P4 (Dual-Core RV32IMAC / ilp32, CPU clock 360 MHz as reported by the boot-shim, 32 MiB PSRAM, 16 MiB SPI Flash).
-- **SMP (experimental)**: The kernel is built with SMP (`Linux 6.18.35 #1 SMP riscv32 GNU/Linux`), but the shipped DTB boots with `maxcpus=1`, so only CPU0 is online (`/sys/devices/system/cpu/online` = `0`). With `maxcpus=2`, about one boot in five stalls during userland start (issue #5): CPU1 stops accepting any interrupt (timer and IPI stay pending and enabled) and the rest of the system waits on it. Adding `isolcpus=1` to the kernel command line avoided the stall in 17 of 17 boots and a 568 s soak, but leaves CPU1 almost unused; see `linux/tests/m3-lab-hardware-validation-2026-10-14.md`. A stalled board may need a re-flash over USB. `maxcpus` in `/boot/config.txt` is informational and is not read by anything.
+- **SMP (experimental)**: The kernel is built with SMP (`Linux 6.18.57 #1 SMP riscv32 GNU/Linux`), but the shipped DTB boots with `maxcpus=1`, so only CPU0 is online (`/sys/devices/system/cpu/online` = `0`). With `maxcpus=2`, about one boot in five stalls during userland start (issue #5): CPU1 stops accepting any interrupt (timer and IPI stay pending and enabled) and the rest of the system waits on it. Adding `isolcpus=1` to the kernel command line avoided the stall in 17 of 17 boots and a 568 s soak, but leaves CPU1 almost unused; see `linux/tests/m3-lab-hardware-validation-2026-10-14.md`. A stalled board may need a re-flash over USB. `maxcpus` in `/boot/config.txt` is informational and is not read by anything.
 - **Wi-Fi Companion**: ESP32-C6 (M5Stack Stamp-AddOn C6) connected via 4-bit SDIO (5 MHz by default, up to 40 MHz with `sdio_mhz=`, see [SDIO clock](#c6-firmware-security-features--regulatory-notes)).
 - **Out-of-the-Box SoftAP**:
   - Broadcasts a per-device SSID **`m5-XXXX`** with a WPA2-PSK passphrase generated on first boot (see [Per-device credentials](#per-device-credentials)).
@@ -657,7 +657,7 @@ The images contain third-party software under its own licenses. Corresponding so
 
 | Component | License |
 |---|---|
-| Linux 6.18.35 + patches, `esp32_sdio.ko` | GPL-2.0 |
+| Linux 6.18.57 + patches, `esp32_sdio.ko` | GPL-2.0 |
 | BusyBox | GPL-2.0 |
 | uClibc-ng | LGPL-2.1 |
 | Dropbear | MIT |

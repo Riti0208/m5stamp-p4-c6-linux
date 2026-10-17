@@ -31,14 +31,14 @@
     },
     "linux_base": {
       "repository": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git",
-      "tag": "v6.18.35",
-      "tag_object": "1e0ea17e5f018fdbf91c02f030452ea407be729f",
-      "commit": "acb7cf4c1184e27622be0faf89244d5001ed1e87",
+      "tag": "v6.18.57",
+      "tag_object": "c05de972ca192e22ce318dd70ce8e990b9466f6d",
+      "commit": "2ff600d29ee478d0a8d46ef8a58afb5e038fe692",
       "fetch_repository": "https://github.com/torvalds/linux.git",
       "submodule_repository": "https://github.com/torvalds/linux.git",
       "submodule_path": "vendor/linux",
       "role": "kernel_base",
-      "notes": "commit is the peeled commit behind the annotated v6.18.35 tag"
+      "notes": "commit is the peeled commit behind the annotated v6.18.57 tag"
     },
     "buildroot": {
       "repository": "https://gitlab.com/buildroot.org/buildroot.git",
