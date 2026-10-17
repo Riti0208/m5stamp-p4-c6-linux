@@ -29,7 +29,7 @@ Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SS
   - **`vi` Editor**: Full-featured BusyBox `vi` with search, undo, visual buffers, and syntax assistance.
   - **MicroPython (`python3`)**: MicroPython v1.22.2 compiled with bFLT Load-to-Ram (`-r`) and position-independent code (`-fPIC`) for stable NOMMU execution.
   - **Writable Filesystem (OverlayFS)**: While the root filesystem is SquashFS (read-only for durability), RAM-backed OverlayFS is mounted on `/home`, `/root`, and `/var/lib` so users can create and edit scripts during the current boot. Its contents are lost when power is removed.
-  - **USB Mass Storage (`/boot` drive, optional hardware)**: With the [optional EasyStick carrier](#optional-hardware-easystick-usb-mass-storage-carrier), its Type-A USB connection (GPIO26/27) exposes a FAT-formatted 256KB `/boot` configuration drive to Windows/Mac/Linux hosts. A safe eject applies validated settings immediately, then the board reboots once to commit the image through redundant A/B flash slots.
+  - **USB Mass Storage (`/boot` drive, optional hardware)**: With the [optional EasyStick carrier](#optional-hardware-easystick-usb-mass-storage-carrier), its Type-A USB connection (GPIO26/27) exposes a FAT-formatted 256KB `/boot` configuration drive to Windows/Mac/Linux hosts. Save a file and, a few seconds later, the board validates the drive, applies the settings and writes it to redundant A/B flash slots. No eject or reboot is needed.
 - **Kernel & SoC Stabilization**:
   - Full-Speed DWC2 USB OTG driver hardened with PIO mode and dedicated TX FIFO empty interrupt management, eliminating descriptor DMA coherency panics and enabling stable multi-block transfers.
   - Signal delivery `mcause` hardening (`0014`).
@@ -82,13 +82,13 @@ Every board gets its own credentials on first boot; no SSID or password is share
 
 - On first boot `S05easystick-tmpfs` writes `credentials.txt` to the USB drive: `device_id=`, `password=` (SSH/console password of user `m5`), and, while `wpa_supplicant.conf` is still the shipped default, `ssid=m5-<device_id>` and `psk=`. That `wpa_supplicant.conf` is rewritten with the new SSID and passphrase, and `channel=` (1, 6 or 11, chosen from the device id) is added to `config.txt`.
 - The same values are printed once on the serial console as `ES_CREDENTIALS NEW: ...` and are readable as root in `/tmp/credentials.txt`. **The serial log then contains the password; redact that line before sharing logs.**
-- The generated files are staged and written to flash at the **next normal reboot** (`boot update committed` in the serial log). If power is removed before that reboot, the next boot generates new credentials. Reboot once after first boot, or safe-eject the drive once: the board then reboots by itself.
-- `password=` is applied to user `m5` at every boot. To change it, edit `password=` (8-64 characters, no `:`) in `credentials.txt` and safe-eject the drive; the board reboots and applies it. `passwd` over SSH only lasts until the next boot.
+- The generated files are written to flash during that first boot (`ES_CREDENTIALS: saved to flash` in the serial log).
+- `password=` is applied to user `m5` at every boot. To change it, edit `password=` (8-64 characters, no `:`) in `credentials.txt` and save it; the board applies it a few seconds later. `passwd` over SSH only lasts until the next boot.
 - There is no forced password change at first login: the password is already random per device, and the image has no built-in fallback password. If `password=` cannot be applied (`ES_CREDENTIALS` on the console), password login for `m5` stays disabled; SSH keys still work.
 - `channel=` (1-13) in `config.txt` sets the SoftAP channel without editing `wpa_supplicant.conf`.
 - A custom `wpa_supplicant.conf` (one that is not the shipped `m5` / `m5stamp-p4-c6` default) is never overwritten; only `password=` is generated then.
-- **Factory reset**: put an empty file named `factory-reset` (or `factory-reset.txt`) on the USB drive and safe-eject it; the board reboots. The drive is restored to the shipped defaults (`ES_FACTORY_RESET` in the serial log), new credentials are generated, and the result is saved at the next reboot like any first boot.
-- **SSH keys**: put an OpenSSH `authorized_keys` file on the USB drive and safe-eject it (the board reboots); it is installed as `/home/m5/.ssh/authorized_keys` at every boot (`ES_SSH_KEYS` in the serial log). With keys installed, `ssh_password_auth=no` in `config.txt` makes Dropbear accept keys only. Without any installed key that setting is ignored so a mistake cannot lock you out.
+- **Factory reset**: put an empty file named `factory-reset` (or `factory-reset.txt`) on the USB drive. A few seconds later the board reboots, the drive is restored to the shipped defaults (`ES_FACTORY_RESET` in the serial log), and new credentials are generated and saved like on any first boot. This is the only drive change that reboots the board.
+- **SSH keys**: put an OpenSSH `authorized_keys` file on the USB drive; a few seconds later it is installed as `/home/m5/.ssh/authorized_keys`, and again at every boot (`ES_SSH_KEYS` in the serial log). With keys installed, `ssh_password_auth=no` in `config.txt` makes Dropbear accept keys only. Without any installed key that setting is ignored so a mistake cannot lock you out.
 
 ---
 
@@ -171,11 +171,11 @@ esptool.py --chip esp32p4 --port COM10 --baud 460800 \
 
 1. After flashing, the Stamp-P4 automatically reboots and starts SoftAP within ~10 seconds.
 2. **Optional USB Mass Storage Configuration**: If using the [EasyStick carrier](#optional-hardware-easystick-usb-mass-storage-carrier), disconnect the Stamp-P4 USB-C cable after flashing, then plug the carrier's USB Type-A connection into your PC. Do not power USB-A and USB-C simultaneously. A 256KB FAT drive (volume `EASYSTICK`) will appear with `cmdline.txt`, `config.txt`, and `wpa_supplicant.conf`. Without this carrier or equivalent USB wiring, skip this step and use Wi-Fi/SSH or the USB-C serial console.
-   - Edit and save the configuration, then use the operating system's **Eject / Safely Remove** action. The host-issued SCSI eject transfers ownership of the image back to Linux; only then does `easystick-bootsync` validate the FAT snapshot, apply it and reboot to save it.
-   - Do not reconnect or remove power until the serial log reports `USB storage reattached`. Invalid or incomplete FAT images are rejected and the previous runtime configuration remains active.
+   - Edit and save the configuration. Once the host has not written to the drive for 3 seconds, `easystick-bootsync` copies the image, validates the FAT snapshot, applies it and writes it to flash (`Saved to flash` in the serial log, about 2 seconds). No eject or reboot is needed; wait about 5 seconds after saving before unplugging. The host's **Eject / Safely Remove** action still works and imports at once, which is the safe choice for hosts that cache writes (macOS and Linux may hold them until the eject).
+   - Invalid or incomplete FAT images are rejected and the previous runtime configuration remains active; the next save is checked again.
    - Live network status is available as `/run/easystick-status.txt` over SSH or serial. The exported USB drive is strictly dedicated to boot configuration (`cmdline.txt`, `config.txt`, `wpa_supplicant.conf`).
-   - Imported settings are applied immediately and staged in PSRAM, and the board then reboots by itself to commit the validated image to the inactive flash slot (`Rebooting to commit the image to flash` in the serial log; the drive disappears and comes back with the board). The boot shim verifies the image CRC, switches metadata only after readback succeeds, and retains the previous slot if power is lost during the flash update. An eject with nothing changed since boot does not reboot.
-   - A staged image survives only a software reboot, so do not remove power until the board is back (`boot update committed` in the serial log). `auto_reboot=no` in `config.txt` turns the automatic reboot off; the change then stays in PSRAM until you run `reboot`, and unplugging the board discards it.
+   - Network settings (`wpa_supplicant.conf`, `config.txt`), `password=` and `authorized_keys` take effect at once. `sdio_mhz=`, `ssh_password_auth=` and `cmdline.txt` are read at boot, so they apply from the next boot.
+   - The kernel (`/sys/kernel/easystick/boot_commit`, patch `0072`) writes the image to the inactive flash slot, verifies its CRC, and only then writes the metadata that switches slots, in the format the boot shim checks at every boot. Power loss during the write leaves the previous slot active. If the kernel cannot write flash, the image is staged in PSRAM and the board reboots so the boot shim writes it (`Rebooting to commit the image to flash`); `auto_reboot=no` in `config.txt` turns that fallback reboot off.
 3. Open `credentials.txt` on the USB drive (or read the `ES_CREDENTIALS NEW` line in the serial log) and connect to the Wi-Fi SSID `ssid=` with the passphrase `psk=`.
 4. Your device will receive an IP address such as `192.168.4.2`.
 5. Open a terminal and SSH into the board:
@@ -205,8 +205,8 @@ connection are still required for Wi-Fi.
   for mass storage. The Stamp-P4's USB-C flashing/serial connection is not
   this mass-storage port.
 - **Configuration storage, not a general-purpose USB disk**: the drive is
-  256KB; safe-eject it and let the board reboot (procedure above) to persist
-  changes. It does not expose the root filesystem or RAM-backed home directory.
+  256KB; a saved change is written to flash a few seconds later (procedure
+  above). It does not expose the root filesystem or RAM-backed home directory.
 - **Open hardware files**: [schematic PDF, Gerber ZIP, checksums, and assembly
   notes](board/hardware/README.md), licensed under MIT. Rev0.15 has been
   manufactured and used successfully by the project owner.
@@ -226,7 +226,7 @@ However, you can dynamically connect the Stamp-P4 to your existing Wi-Fi network
 
 ### 0. The simple way: `config.txt` on the USB drive
 
-Add these lines to `config.txt` on the USB drive and use the host's safe-eject action:
+Add these lines to `config.txt` on the USB drive and save it:
 
 ```ini
 wifi_ssid=YOUR_WIFI_SSID
@@ -239,7 +239,7 @@ The board then joins that network as a station (leave `wifi_psk` out for an open
 
 `sdio_mhz=40` (or 1, 2, 5, 10, 20) sets the SDIO clock to the C6 from the next boot; see [SDIO clock](#c6-firmware-security-features--regulatory-notes). Other values are ignored with `M3-lab: ignoring sdio_mhz=...` on the console.
 
-`auto_reboot=no` stops the reboot that follows a safe eject of a changed drive. The change is still applied at once but lives only in PSRAM until a manual `reboot`; unplugging the board discards it.
+`auto_reboot=no` matters only when the kernel cannot write flash: it stops the fallback reboot that saves the drive. The change is still applied at once but lives only in PSRAM until a manual `reboot`; unplugging the board discards it.
 
 `country=JP` (any two-letter code) in `config.txt` sets the Wi-Fi regulatory domain (`M3-lab: regulatory domain JP` on the console); `country=` inside `wpa_supplicant.conf` works too. Without it the board uses the restrictive world domain. Set it to the country where the board is used.
 

@@ -11,9 +11,9 @@ less secure than the production M3 profile:
   never committed to the repository.
 
 Use it only on a private test network.  `passwd` does not persist (read-only
-rootfs); edit `password=` in `credentials.txt`, safe-eject the drive and
-reboot instead.  S05easystick-tmpfs applies it to `/etc/shadow` at every boot
-(#30).  Move to
+rootfs); edit and save `password=` in `credentials.txt` instead.
+easystick-bootsync applies it a few seconds later and S05easystick-tmpfs at
+every boot (#30).  Move to
 the key-only M3 profile after the console/config overlay path
 has been validated.  The lab image's `askfirst` shell is on `ttyGS1`, so the
 module USB-C/COM10 path is usable during bring-up; UART0 remains the recovery
@@ -34,19 +34,21 @@ the external build directory when the test is complete.
 ## USB-A boot configuration ownership
 
 The USB FAT image has exactly one owner. While it is exported through
-`g_mass_storage`, Linux neither mounts nor writes the backing image. After
-editing `config.txt` or `wpa_supplicant.conf`, use the host operating system's
-safe-eject action. The empty legacy LUN `file` attribute is the hand-off to
-`easystick-bootsync`; it validates a private read-only snapshot, applies the
-configuration, and reattaches the LUN. The daemon never uses `forced_eject`.
+`g_mass_storage`, Linux neither mounts nor writes the backing image.
+`easystick-bootsync` imports the drive 3 seconds after the host's last write
+(it polls the image mtime), or at once after the host's safe-eject action (the
+empty legacy LUN `file` attribute is the hand-off; the LUN is reattached
+afterwards). Either way it reads a copy: it validates a private read-only
+snapshot and applies the configuration. The daemon never uses `forced_eject`.
 
 Network status is written atomically to `/run/easystick-status.txt` for SSH or
 serial inspection. It is not written into the exported FAT image. A validated
-snapshot is staged in reserved PSRAM, and a normal reboot asks boot-shim to
-write the inactive flash slot, verify its CRC, and atomically switch redundant
-metadata. Power loss before the reboot loses the staged update; power loss
-during the flash operation leaves the previous slot selected. Wait for the
-serial `boot update committed` message before treating the edit as durable.
+snapshot is staged in reserved PSRAM, and the kernel (patch 0072,
+`/sys/kernel/easystick/boot_commit`) writes the inactive flash slot, verifies
+its CRC, and atomically switches redundant metadata, as boot-shim would at the
+next reboot. Power loss during the flash operation leaves the previous slot
+selected. The edit is durable once the serial log shows `Saved to flash`. If
+the kernel cannot write flash, bootsync reboots so that boot-shim writes it.
 
 ## SSH acceptance target (M2.5)
 
