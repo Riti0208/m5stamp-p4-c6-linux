@@ -82,18 +82,17 @@ ends at high_memory, so an end check would fail short strings there.
 +#endif
 +
  #ifdef CONFIG_SPARSEMEM_VMEMMAP
- #define VMEMMAP_ADDR_ALIGN	(1ULL << SECTION_SIZE_BITS)
- 
+ #define VMEMMAP_ADDR_ALIGN	max(1ULL << SECTION_SIZE_BITS, \
+ 				    PFN_PHYS(MAX_FOLIO_VMEMMAP_ALIGN / \
 --- a/drivers/mtd/maps/physmap-core.c
-+++ b/drivers/mtd/maps/physmap-core.c
 @@ -41,6 +41,7 @@
  #include <linux/of.h>
  #include <linux/pm_runtime.h>
  #include <linux/gpio/consumer.h>
 +#include <linux/uaccess.h>
  
- #include "physmap-bt1-rom.h"
  #include "physmap-gemini.h"
+ #include "physmap-ixp4xx.h"
 @@ -511,6 +512,14 @@
  
  		dev_notice(&dev->dev, "physmap platform flash device: %pR\n",
