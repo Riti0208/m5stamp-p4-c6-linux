@@ -69,6 +69,11 @@ def main() -> None:
     for applet in ("AWK", "LESS", "TOP", "FREE", "TAR", "WGET", "IP", "PGREP"):
         assert f"CONFIG_{applet}=y\n" in tools_config, applet
     assert "# CONFIG_SHELL_ASH is not set" in tools_config
+    # The login message must not tell users to eject and reboot any more.
+    motd = read("linux/m3-lab/rootfs-overlay/etc/motd")
+    assert "No eject or reboot is needed" in motd
+    assert "busybox-tools --list" in motd
+    assert max(len(line) for line in motd.splitlines()) <= 78
     # A reused Buildroot output must not keep a stale boot-commit helper.
     assert '"$external_root"/package/*/src' in build
     assert '"${pkg_name}-dirclean"' in build

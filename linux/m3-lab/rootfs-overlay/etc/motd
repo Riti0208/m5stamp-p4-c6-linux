@@ -1,6 +1,15 @@
-M5Stamp ESP32-P4 + C6 SDIO Linux
+M5Stamp ESP32-P4 + C6 SDIO Linux  (NOMMU, BusyBox)
 
-Account: m5.  The password is generated per device on first boot and is in
-credentials.txt on the USB drive (root: /tmp/credentials.txt).
-To change it, edit password= there, safe-eject the drive and reboot.
-Network/SSH is ready via Stamp-AddOn C6 SDIO Wi-Fi.
+Account m5.  The password is password= in credentials.txt on the USB drive
+(root: /tmp/credentials.txt).  Edit it and save: the board writes the drive
+to flash a few seconds later and applies it.  No eject or reboot is needed.
+
+Commands
+  files    ls cp mv rm mkdir find xargs stat tree du df tar gzip unzip
+  text     cat less head tail grep sed awk cut sort uniq wc tr diff vi
+  system   ps top free uptime dmesg kill pkill pgrep watch timeout lsmod
+  network  ifconfig ip ping nslookup traceroute netstat nc wget arp
+  other    python3 (MicroPython)  hexdump xxd md5sum sha256sum date bc
+
+Full list: busybox --list ; busybox-tools --list
+Not available: sudo, nano, curl, file (no MMU on this CPU).
