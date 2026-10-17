@@ -2292,7 +2292,7 @@ if $ssh_profile; then
 			echo "m3-lab check failed: busybox-tools is ${tools_bytes} bytes" >&2
 			exit 1
 		}
-		for link in usr/bin/awk usr/bin/less bin/tar usr/bin/wget usr/bin/top usr/bin/free; do
+		for link in usr/bin/awk usr/bin/less bin/tar usr/bin/wget usr/bin/top usr/bin/free usr/bin/chpst; do
 			[[ "$(readlink "${br_output}/target/${link}")" == *busybox-tools ]] || {
 				echo "m3-lab check failed: ${link} does not point at busybox-tools" >&2
 				exit 1
