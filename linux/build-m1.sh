@@ -2267,7 +2267,8 @@ if $ssh_profile; then
 			"BR2_PACKAGE_WIRELESS_REGDB=y" \
 			"BR2_PACKAGE_EASYSTICK_MDNS=y" \
 			"BR2_PACKAGE_EASYSTICK_RESPAWN=y" \
-			"BR2_PACKAGE_BUSYBOX_DAEMONS=y" \n			"BR2_PACKAGE_BUSYBOX_TOOLS=y"; do
+			"BR2_PACKAGE_BUSYBOX_DAEMONS=y" \
+			"BR2_PACKAGE_BUSYBOX_TOOLS=y"; do
 			grep -Fqx -- "${expected}" "${br_output}/.config" || {
 				echo "m3-lab config check failed: ${expected}" >&2
 				exit 1
