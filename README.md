@@ -537,11 +537,12 @@ of starting it. Build with the Buildroot toolchain from a source build
 (`output/host/bin`):
 
 ```bash
-riscv32-linux-gcc -Os -Wl,-elf2flt="-r -s 16384" -o main hello.c
+riscv32-linux-gcc -Os -fPIC -Wl,-elf2flt="-r -s 16384" -o main hello.c
 head -c 4 main   # bFLT
 ```
 
-A `printf`/`sleep` hello world is about 85 KB.
+`-fPIC` is required: without it the binary loads but crashes on its first
+data access. A `printf`/`sleep` hello world is about 85 KB.
 
 | Signal | ESP32-P4 Pin | ESP32-C6 Pin | Function |
 | :--- | :--- | :--- | :--- |

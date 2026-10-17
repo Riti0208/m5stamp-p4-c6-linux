@@ -96,6 +96,9 @@ def main() -> None:
     variant = read("linux/buildroot-external/package/micropython-nommu/variant/mpconfigvariant.h")
     assert "MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES" in variant
     assert "mpy_bss_end + mpy_stack < 496 * 1024" in build
+    # Editing autorun= must not reload Wi-Fi; the README build line needs -fPIC.
+    assert "net_settings_changed \"$STAGE/$name\" \"/tmp/$name\"" in bootsync
+    assert "riscv32-linux-gcc -Os -fPIC -Wl,-elf2flt" in readme
     # The login message must not tell users to eject and reboot any more.
     motd = read("linux/m3-lab/rootfs-overlay/etc/motd")
     assert "No eject or reboot is needed" in motd

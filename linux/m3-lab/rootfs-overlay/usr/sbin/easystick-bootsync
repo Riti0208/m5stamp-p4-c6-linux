@@ -70,6 +70,21 @@ lun_state() {
 	esac
 }
 
+# config.txt $1 differs from $2 in more than the autorun lines.  Switching a
+# program on or off must not drop Wi-Fi and the SSH sessions with it.
+net_settings_changed() {
+	[ -f "$2" ] || return 0
+	grep -v '^autorun' "$1" > /run/.bootsync-cfg-new
+	grep -v '^autorun' "$2" > /run/.bootsync-cfg-old
+	if file_changed /run/.bootsync-cfg-new /run/.bootsync-cfg-old; then
+		cfg_changed=0
+	else
+		cfg_changed=1
+	fi
+	rm -f /run/.bootsync-cfg-new /run/.bootsync-cfg-old
+	return "$cfg_changed"
+}
+
 FLASH_HASH_FILE="/run/.boot-flash-md5"
 
 # The host's writes change boot.img's mtime.  SEEN_REF carries the mtime of
@@ -228,8 +243,11 @@ import_snapshot() {
 	NET_CHANGED=0
 	for name in wpa_supplicant.conf config.txt; do
 		if [ -f "$STAGE/$name" ] && file_changed "$STAGE/$name" "/tmp/$name"; then
+			if [ "$name" != config.txt ] ||
+				net_settings_changed "$STAGE/$name" "/tmp/$name"; then
+				NET_CHANGED=1
+			fi
 			mv -f "$STAGE/$name" "/tmp/$name"
-			NET_CHANGED=1
 		fi
 	done
 	if [ -f "$STAGE/credentials.txt" ] &&
