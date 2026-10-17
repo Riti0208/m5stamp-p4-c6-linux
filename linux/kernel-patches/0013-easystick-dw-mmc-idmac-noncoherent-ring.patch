@@ -1,33 +1,8 @@
-diff --git a/drivers/mmc/host/dw_mmc.h b/drivers/mmc/host/dw_mmc.h
-index ac3fe0f..9951ad6 100644
---- a/drivers/mmc/host/dw_mmc.h
-+++ b/drivers/mmc/host/dw_mmc.h
-@@ -139,6 +139,11 @@ struct dw_mci_cmd53_trace_record {
-  * @dma_64bit_address: Whether DMA supports 64-bit address mode or not.
-  * @sg_dma: Bus address of DMA buffer.
-  * @sg_cpu: Virtual address of DMA buffer.
-+ * @sg_noncoherent: Whether the descriptor ring came from
-+ *	dma_alloc_noncoherent() rather than dmam_alloc_coherent(), and so
-+ *	needs explicit ownership synchronisation and an explicit free.
-+ * @sg_device_owned: Whether the noncoherent descriptor ring is currently in
-+ *	the device domain.  Meaningless unless @sg_noncoherent is set.
-  * @dma_ops: Pointer to platform-specific DMA callbacks.
-  * @cmd_status: Snapshot of SR taken upon completion of the current
-  * @ring_size: Buffer size for idma descriptors.
-@@ -243,6 +248,8 @@ struct dw_mci {
- 
- 	dma_addr_t		sg_dma;
- 	void			*sg_cpu;
-+	bool			sg_noncoherent;
-+	bool			sg_device_owned;
- 	const struct dw_mci_dma_ops	*dma_ops;
- 	/* For idmac */
- 	unsigned int		ring_size;
 diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
-index 5e1d195..2b043ce 100644
+index 748baba8801e..67fa8b8b1052 100644
 --- a/drivers/mmc/host/dw_mmc.c
 +++ b/drivers/mmc/host/dw_mmc.c
-@@ -649,6 +649,53 @@ static void dw_mci_stop_dma(struct dw_mc
+@@ -637,6 +637,53 @@ static void dw_mci_stop_dma(struct dw_mci *host)
  	set_bit(EVENT_XFER_COMPLETE, &host->pending_events);
  }
  
@@ -81,7 +56,7 @@ index 5e1d195..2b043ce 100644
  static void dw_mci_dma_cleanup(struct dw_mci *host)
  {
  	struct mmc_data *data = host->data;
-@@ -685,6 +732,14 @@ static void dw_mci_idmac_stop_dma(struct
+@@ -673,6 +720,14 @@ static void dw_mci_idmac_stop_dma(struct dw_mci *host)
  	temp &= ~(SDMMC_IDMAC_ENABLE | SDMMC_IDMAC_FB);
  	temp |= SDMMC_IDMAC_SWRESET;
  	mci_writel(host, BMOD, temp);
@@ -96,7 +71,7 @@ index 5e1d195..2b043ce 100644
  }
  
  static void dw_mci_dmac_complete_dma(void *arg)
-@@ -694,6 +749,15 @@ static void dw_mci_dmac_complete_dma(voi
+@@ -682,6 +737,15 @@ static void dw_mci_dmac_complete_dma(void *arg)
  
  	dev_vdbg(host->dev, "DMA complete\n");
  
@@ -112,7 +87,7 @@ index 5e1d195..2b043ce 100644
  	if ((host->use_dma == TRANS_MODE_EDMAC) &&
  	    data && (data->flags & MMC_DATA_READ))
  		/* Invalidate cache after read */
-@@ -714,10 +778,59 @@ static void dw_mci_dmac_complete_dma(voi
+@@ -702,10 +766,59 @@ static void dw_mci_dmac_complete_dma(void *arg)
  	}
  }
  
@@ -171,8 +146,8 @@ index 5e1d195..2b043ce 100644
 +
  	if (host->dma_64bit_address == 1) {
  		struct idmac_desc_64addr *p;
- 		/* Number of descriptors in the ring buffer */
-@@ -767,6 +880,15 @@ static int dw_mci_idmac_init(struct dw_m
+ 
+@@ -755,6 +868,15 @@ static int dw_mci_idmac_init(struct dw_mci *host)
  		p->des0 = cpu_to_le32(IDMAC_DES0_ER);
  	}
  
@@ -188,7 +163,16 @@ index 5e1d195..2b043ce 100644
  	dw_mci_idmac_reset(host);
  
  	if (host->dma_64bit_address == 1) {
-@@ -807,11 +929,23 @@ static inline int dw_mci_prepare_desc64(
+@@ -788,7 +910,7 @@ static inline int dw_mci_prepare_desc(struct dw_mci *host, struct mmc_data *data
+ 	unsigned int desc_len;
+ 	struct idmac_desc *desc_first, *desc_last, *desc;
+ 	struct idmac_desc_64addr *desc64_first, *desc64_last, *desc64;
+-	u32 val, des0;
++	u32 val;
+ 	int i, err;
+ 
+ 	if (is_64bit)
+@@ -798,12 +920,24 @@ static inline int dw_mci_prepare_desc(struct dw_mci *host, struct mmc_data *data
  	if (record)
  		record->desc_first = 0;
  
@@ -211,138 +195,92 @@ index 5e1d195..2b043ce 100644
  
 -		u64 mem_addr = sg_dma_address(&data->sg[i]);
 -
- 		for ( ; length ; desc++) {
+-		while (length > 0) {
++		for ( ; length ; ) {
  			desc_len = (length <= DW_MCI_DESC_DATA_LENGTH) ?
  				   length : DW_MCI_DESC_DATA_LENGTH;
-@@ -825,11 +959,13 @@ static inline int dw_mci_prepare_desc64(
- 			 * ops and CPU's read ops are asynchronous.
+ 
+@@ -817,31 +951,57 @@ static inline int dw_mci_prepare_desc(struct dw_mci *host, struct mmc_data *data
  			 */
- 			if (record && desc == desc_first)
--				record->own_before = READ_ONCE(desc->des0);
--			ret = readl_poll_timeout_atomic(&desc->des0, val,
--							!(val & IDMAC_DES0_OWN),
--							10,
--							100 * USEC_PER_MSEC);
-+				record->own_before =
-+					dw_mci_idmac_own64(host, desc);
-+			ret = read_poll_timeout_atomic(dw_mci_idmac_own64, val,
-+						       !(val & IDMAC_DES0_OWN),
-+						       10,
-+						       100 * USEC_PER_MSEC,
-+						       false, host, desc);
- 			if (record && desc == desc_first)
- 				record->own_after_poll = val;
- 			if (ret) {
-@@ -837,6 +973,26 @@ static inline int dw_mci_prepare_desc64(
+ 			if (is_64bit) {
+ 				if (record && desc64 == desc64_first)
+-					record->own_before = READ_ONCE(desc64->des0);
+-				err = readl_poll_timeout_atomic(&desc64->des0, val,
+-					IDMAC_OWN_CLR64(val), 10, 100 * USEC_PER_MSEC);
++					record->own_before =
++						dw_mci_idmac_own64(host, desc64);
++				err = read_poll_timeout_atomic(dw_mci_idmac_own64, val,
++						!(val & IDMAC_DES0_OWN),
++						10, 100 * USEC_PER_MSEC,
++						false, host, desc64);
+ 				if (record && desc64 == desc64_first)
+ 					record->own_after_poll = val;
++				desc64++;
+ 			} else {
+-				if (record && desc == desc_first)
+-					record->own_before =
+-						le32_to_cpu(READ_ONCE(desc->des0));
+-				err = readl_poll_timeout_atomic(&desc->des0, val,
+-					IDMAC_OWN_CLR64(val), 10, 100 * USEC_PER_MSEC);
++				if (record && desc == desc_first) {
++					u32 own = dw_mci_idmac_own32(host, desc);
++
++					record->own_before = le32_to_cpu(own);
++				}
++				err = read_poll_timeout_atomic(dw_mci_idmac_own32, val,
++						IDMAC_OWN_CLR64(val),
++						10, 100 * USEC_PER_MSEC,
++						false, host, desc);
+ 				if (record && desc == desc_first)
+ 					record->own_after_poll = le32_to_cpu(val);
++				desc++;
+ 			}
+ 			if (err) {
+ 				if (record)
  					record->own_timeout = 1;
  				goto err_own_bit;
  			}
 +		}
 +	}
-+
+ 
+-			des0 = IDMAC_DES0_OWN | IDMAC_DES0_DIC | IDMAC_DES0_CH;
+-			if (is_64bit)
+-				desc64->des0 = des0;
+-			else
+-				desc->des0 = cpu_to_le32(des0);
 +	/*
 +	 * Pass 2: fill the descriptors in.  The ring is CPU-owned and stays
 +	 * that way; dw_mci_idmac_start_dma() performs the single handover to
 +	 * the device once the whole chain is written.
 +	 */
-+	desc = desc_first;
++	if (is_64bit)
++		desc64 = desc64_first;
++	else
++		desc = desc_first;
 +
 +	for (i = 0; i < sg_len; i++) {
 +		unsigned int length = sg_dma_len(&data->sg[i]);
 +
 +		u64 mem_addr = sg_dma_address(&data->sg[i]);
 +
-+		for ( ; length ; desc++) {
++		for ( ; length ; ) {
 +			desc_len = (length <= DW_MCI_DESC_DATA_LENGTH) ?
 +				   length : DW_MCI_DESC_DATA_LENGTH;
 +
 +			length -= desc_len;
  
  			/*
- 			 * Set the OWN bit and disable interrupts
-@@ -879,6 +1035,12 @@ static inline int dw_mci_prepare_desc64(
- err_own_bit:
- 	/* restore the descriptor chain as it's polluted */
- 	dev_dbg(host->dev, "descriptor is still owned by IDMAC.\n");
-+	/*
-+	 * The poll left the ring in the device domain so IDMAC could update
-+	 * it.  Take it back before the memset below, or the invalidate inside
-+	 * dw_mci_idmac_init() would discard the cleared ring.
-+	 */
-+	dw_mci_idmac_ring_to_cpu(host);
- 	memset(host->sg_cpu, 0, DESC_RING_BUF_SZ);
- 	dw_mci_idmac_init(host);
- 	return -EINVAL;
-@@ -900,11 +1062,16 @@ static inline int dw_mci_prepare_desc32(
- 	if (record)
- 		record->desc_first = 0;
- 
-+	/*
-+	 * Pass 1: wait for IDMAC to release every descriptor this transfer
-+	 * needs, before any of them is written.  See dw_mci_prepare_desc64()
-+	 * for why the poll and the fill are separate passes.
-+	 */
-+	dw_mci_idmac_ring_to_cpu(host);
-+
- 	for (i = 0; i < sg_len; i++) {
- 		unsigned int length = sg_dma_len(&data->sg[i]);
- 
--		u32 mem_addr = sg_dma_address(&data->sg[i]);
--
- 		for ( ; length ; desc++) {
- 			desc_len = (length <= DW_MCI_DESC_DATA_LENGTH) ?
- 				   length : DW_MCI_DESC_DATA_LENGTH;
-@@ -917,13 +1084,16 @@ static inline int dw_mci_prepare_desc32(
- 			 * isn't still owned by IDMAC as IDMAC's write
- 			 * ops and CPU's read ops are asynchronous.
- 			 */
--			if (record && desc == desc_first)
--				record->own_before =
--					le32_to_cpu(READ_ONCE(desc->des0));
--			ret = readl_poll_timeout_atomic(&desc->des0, val,
--							IDMAC_OWN_CLR64(val),
--							10,
--							100 * USEC_PER_MSEC);
-+			if (record && desc == desc_first) {
-+				u32 own = dw_mci_idmac_own32(host, desc);
-+
-+				record->own_before = le32_to_cpu(own);
-+			}
-+			ret = read_poll_timeout_atomic(dw_mci_idmac_own32, val,
-+						       IDMAC_OWN_CLR64(val),
-+						       10,
-+						       100 * USEC_PER_MSEC,
-+						       false, host, desc);
- 			if (record && desc == desc_first)
- 				record->own_after_poll = le32_to_cpu(val);
- 			if (ret) {
-@@ -931,6 +1101,25 @@ static inline int dw_mci_prepare_desc32(
- 					record->own_timeout = 1;
- 				goto err_own_bit;
+ 			 * 1. Set OWN bit and disable interrupts for this descriptor
+@@ -854,6 +1014,8 @@ static inline int dw_mci_prepare_desc(struct dw_mci *host, struct mmc_data *data
+ 				desc64->des4 = mem_addr & 0xffffffff;
+ 				desc64->des5 = mem_addr >> 32;
+ 			} else {
++				desc->des0 = cpu_to_le32(IDMAC_DES0_OWN | IDMAC_DES0_DIC |
++							 IDMAC_DES0_CH);
+ 				IDMAC_SET_BUFFER1_SIZE(desc, desc_len);
+ 				desc->des2 = cpu_to_le32(mem_addr);
  			}
-+		}
-+	}
-+
-+	/*
-+	 * Pass 2: fill the descriptors in.  The ring stays CPU-owned until
-+	 * dw_mci_idmac_start_dma() hands the completed chain over.
-+	 */
-+	desc = desc_first;
-+
-+	for (i = 0; i < sg_len; i++) {
-+		unsigned int length = sg_dma_len(&data->sg[i]);
-+
-+		u32 mem_addr = sg_dma_address(&data->sg[i]);
-+
-+		for ( ; length ; desc++) {
-+			desc_len = (length <= DW_MCI_DESC_DATA_LENGTH) ?
-+				   length : DW_MCI_DESC_DATA_LENGTH;
-+
-+			length -= desc_len;
- 
- 			/*
- 			 * Set the OWN bit and disable interrupts
-@@ -973,6 +1162,12 @@ static inline int dw_mci_prepare_desc32(
+@@ -903,6 +1065,12 @@ static inline int dw_mci_prepare_desc(struct dw_mci *host, struct mmc_data *data
  err_own_bit:
  	/* restore the descriptor chain as it's polluted */
  	dev_dbg(host->dev, "descriptor is still owned by IDMAC.\n");
@@ -355,7 +293,7 @@ index 5e1d195..2b043ce 100644
  	memset(host->sg_cpu, 0, DESC_RING_BUF_SZ);
  	dw_mci_idmac_init(host);
  	return -EINVAL;
-@@ -992,13 +1187,15 @@ static int dw_mci_idmac_start_dma(struct
+@@ -918,13 +1086,15 @@ static int dw_mci_idmac_start_dma(struct dw_mci *host, unsigned int sg_len)
  		goto out;
  
  	/*
@@ -377,8 +315,8 @@ index 5e1d195..2b043ce 100644
  
  	/* drain writebuffer */
  	wmb();
-@@ -3415,6 +3612,27 @@ static void dw_mci_cleanup_slot(struct d
- 	slot->host->slot = NULL;
+@@ -3223,6 +3412,27 @@ static void dw_mci_cleanup_host(struct dw_mci *host)
+ 	mmc_remove_host(host->mmc);
  }
  
 +/*
@@ -405,7 +343,7 @@ index 5e1d195..2b043ce 100644
  static void dw_mci_init_dma(struct dw_mci *host)
  {
  	int addr_config;
-@@ -3470,23 +3688,46 @@ static void dw_mci_init_dma(struct dw_mc
+@@ -3277,23 +3487,46 @@ static void dw_mci_init_dma(struct dw_mci *host)
  						   &host->sg_dma, GFP_KERNEL);
  		if (!host->sg_cpu) {
  			/*
@@ -465,3 +403,28 @@ index 5e1d195..2b043ce 100644
  			}
  		}
  		if (!host->sg_cpu) {
+diff --git a/drivers/mmc/host/dw_mmc.h b/drivers/mmc/host/dw_mmc.h
+index 2ff80c0452b4..9c761ed0be2d 100644
+--- a/drivers/mmc/host/dw_mmc.h
++++ b/drivers/mmc/host/dw_mmc.h
+@@ -137,6 +137,11 @@ struct dw_mci_cmd53_trace_record {
+  * @dma_64bit_address: Whether DMA supports 64-bit address mode or not.
+  * @sg_dma: Bus address of DMA buffer.
+  * @sg_cpu: Virtual address of DMA buffer.
++ * @sg_noncoherent: Whether the descriptor ring came from
++ *	dma_alloc_noncoherent() rather than dmam_alloc_coherent(), and so
++ *	needs explicit ownership synchronisation and an explicit free.
++ * @sg_device_owned: Whether the noncoherent descriptor ring is currently in
++ *	the device domain.  Meaningless unless @sg_noncoherent is set.
+  * @dma_ops: Pointer to DMA callbacks.
+  * @cmd_status: Snapshot of SR taken upon completion of the current
+  *	command. Only valid when EVENT_CMD_COMPLETE is pending.
+@@ -245,6 +250,8 @@ struct dw_mci {
+ 
+ 	dma_addr_t		sg_dma;
+ 	void			*sg_cpu;
++	bool			sg_noncoherent;
++	bool			sg_device_owned;
+ 	const struct dw_mci_dma_ops	*dma_ops;
+ 	/* For idmac */
+ 	unsigned short		desc_num;

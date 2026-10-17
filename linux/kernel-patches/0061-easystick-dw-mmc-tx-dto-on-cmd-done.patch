@@ -22,7 +22,7 @@ diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
 +			 * write: cmd_done=1, bh_in=1, data_over=0). Arm software DTO
 +			 * here, after irq_lock, so dw_mci_set_drto() can take it.
 +			 */
-+			if (host->data && host->dir_status == DW_MCI_SEND_STATUS)
++			if (host->data && host->dir_status == MMC_DATA_WRITE)
 +				dw_mci_set_drto(host);
  		}
  

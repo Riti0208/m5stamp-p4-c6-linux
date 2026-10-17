@@ -1,5 +1,7 @@
 diff --git a/arch/riscv/kernel/smpboot.c b/arch/riscv/kernel/smpboot.c
-index 7e6996556b69..333333333333 100644
+index f6ef57930b50..7e3d250dd340 100644
+--- a/arch/riscv/kernel/smpboot.c
++++ b/arch/riscv/kernel/smpboot.c
 @@ -39,6 +39,12 @@
  
  #include "head.h"
@@ -10,12 +12,22 @@ index 7e6996556b69..333333333333 100644
 +#define easystick_c68_release_ptr()	((volatile u32 __force *)EASYSTICK_C68_RELEASE_PA)
 +#define easystick_c68_stage_ptr()	((volatile u32 __force *)EASYSTICK_C68_STAGE_PA)
 +
+ #ifndef CONFIG_HOTPLUG_PARALLEL
  static DECLARE_COMPLETION(cpu_running);
+ #endif
+diff --git a/arch/riscv/kernel/smpboot.c b/arch/riscv/kernel/smpboot.c
+index f6ef57930b50..7e3d250dd340 100644
+--- a/arch/riscv/kernel/smpboot.c
++++ b/arch/riscv/kernel/smpboot.c
+@@ -192,10 +198,17 @@ int __cpu_up(unsigned int cpu, struct task_struct *tidle)
+ 	int ret;
+ 	tidle->thread_info.cpu = cpu;
  
- void __init smp_prepare_cpus(unsigned int max_cpus)
-@@ -191,6 +197,11 @@
- 		wait_for_completion_timeout(&cpu_running,
- 					    msecs_to_jiffies(1000));
++	pr_info("C67 UP cpu=%u hart=%lu\n", cpu, cpuid_to_hartid_map(cpu));
+ 	ret = start_secondary_cpu(cpu, tidle);
++	pr_info("C67 START cpu=%u ret=%d\n", cpu, ret);
+ 	if (!ret) {
+ 		wait_for_completion_timeout(&cpu_running, secs_to_jiffies(1));
  
 +		if (!cpu_online(cpu) &&
 +		    of_machine_is_compatible("tsuyoshi-otake,easystick-stamp-p4"))

@@ -1,0 +1,282 @@
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -224,6 +224,17 @@ static void mci_send_cmd(struct dw_mci *host, u32 cmd, u32 arg)
+ {
+ 	unsigned int cmd_status = 0;
+ 
++	/*
++	 * SDMMC_CMD register has a 5-bit card_number field at bits [20:16]
++	 * that selects which physical slot the command targets. Mainline
++	 * dw_mmc was multi-slot historically but the loop was removed and
++	 * the slot index is hardcoded to 0; we read it from DT
++	 * (`snps,slot-id`) to restore support for boards that wire their
++	 * card on a non-zero physical slot. (The WHY2025 badge's own
++	 * microSD is on slot 0.)
++	 */
++	cmd |= host->slot_id << 16;
++
+ 	mci_writel(host, CMDARG, arg);
+ 	wmb(); /* drain writebuffer */
+ 	dw_mci_wait_while_busy(host, cmd);
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -276,7 +287,7 @@ static u32 dw_mci_prepare_command(struct mmc_host *mmc, struct mmc_command *cmd)
+ 		 * until the voltage change is all done.
+ 		 */
+ 		clk_en_a = mci_readl(host, CLKENA);
+-		clk_en_a &= ~SDMMC_CLKEN_LOW_PWR;
++		clk_en_a &= ~(SDMMC_CLKEN_LOW_PWR << host->slot_id);
+ 		mci_writel(host, CLKENA, clk_en_a);
+ 		mci_send_cmd(host, SDMMC_CMD_UPD_CLK |
+ 			     SDMMC_CMD_PRV_DAT_WAIT, 0);
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -301,6 +312,9 @@ static u32 dw_mci_prepare_command(struct mmc_host *mmc, struct mmc_command *cmd)
+ 	if (!test_bit(DW_MMC_CARD_NO_USE_HOLD, &host->flags))
+ 		cmdr |= SDMMC_CMD_USE_HOLD_REG;
+ 
++	/* CMD.card_number = slot_id; see comment in mci_send_cmd. */
++	cmdr |= host->slot_id << 16;
++
+ 	return cmdr;
+ }
+ 
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -340,6 +354,9 @@ static u32 dw_mci_prep_stop_abort(struct dw_mci *host, struct mmc_command *cmd)
+ 	if (!test_bit(DW_MMC_CARD_NO_USE_HOLD, &host->flags))
+ 		cmdr |= SDMMC_CMD_USE_HOLD_REG;
+ 
++	/* CMD.card_number = slot_id; see comment in mci_send_cmd. */
++	cmdr |= host->slot_id << 16;
++
+ 	return cmdr;
+ }
+ 
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -666,6 +683,15 @@ static int dw_mci_idmac_start_dma(struct dw_mci *host, unsigned int sg_len)
+ 	if (ret)
+ 		goto out;
+ 
++	/*
++	 * Flush the descriptor ring out of the CPU cache so IDMAC sees the
++	 * descriptors we just wrote. No-op if sg_cpu came from
++	 * dma_alloc_coherent (already coherent); real cache writeback when
++	 * we fell back to plain pages on a NOMMU non-coherent platform.
++	 */
++	dma_sync_single_for_device(host->dev, host->sg_dma,
++				   DESC_RING_BUF_SZ, DMA_TO_DEVICE);
++
+ 	/* drain writebuffer */
+ 	wmb();
+ 
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -894,7 +920,7 @@ static int dw_mci_get_cd(struct mmc_host *mmc)
+ 		return !!gpio_cd;
+ 
+ 	/* Host native card detect */
+-	return !(mci_readl(host, CDETECT) & BIT(0));
++	return !(mci_readl(host, CDETECT) & BIT(host->slot_id));
+ }
+ 
+ static void dw_mci_adjust_fifoth(struct dw_mci *host, struct mmc_data *data)
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -1174,5 +1174,5 @@
+ 		/* enable clock; only low power if no SDIO */
+-		clk_en_a = SDMMC_CLKEN_ENABLE;
++		clk_en_a = SDMMC_CLKEN_ENABLE << host->slot_id;
+ 		if (!test_bit(DW_MMC_CARD_NO_LOW_PWR, &host->flags))
+-			clk_en_a |= SDMMC_CLKEN_LOW_PWR;
++			clk_en_a |= SDMMC_CLKEN_LOW_PWR << host->slot_id;
+ 		mci_writel(host, CLKENA, clk_en_a);
+@@ -1189,7 +1220,7 @@ static void dw_mci_setup_bus(struct dw_mci *host, bool force_clkinit)
+ 	host->current_speed = clock;
+ 
+ 	/* Set the current bus width */
+-	mci_writel(host, CTYPE, host->ctype);
++	mci_writel(host, CTYPE, host->ctype << host->slot_id);
+ }
+ 
+ static void dw_mci_set_data_timeout(struct dw_mci *host,
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -1351,9 +1382,9 @@ static void dw_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+ 	if (ios->timing == MMC_TIMING_MMC_DDR52 ||
+ 	    ios->timing == MMC_TIMING_UHS_DDR50 ||
+ 	    ios->timing == MMC_TIMING_MMC_HS400)
+-		regs |= BIT(16);
++		regs |= BIT(16 + host->slot_id);
+ 	else
+-		regs &= ~BIT(16);
++		regs &= ~BIT(16 + host->slot_id);
+ 
+ 	mci_writel(host, UHS_REG, regs);
+ 	host->timing = ios->timing;
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -1376,7 +1407,7 @@ static void dw_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+ 		}
+ 		set_bit(DW_MMC_CARD_NEED_INIT, &host->flags);
+ 		regs = mci_readl(host, PWREN);
+-		regs |= BIT(0);
++		regs |= BIT(host->slot_id);
+ 		mci_writel(host, PWREN, regs);
+ 		break;
+ 	case MMC_POWER_ON:
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -1395,7 +1426,7 @@ static void dw_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+ 		mmc_regulator_disable_vqmmc(mmc);
+ 
+ 		regs = mci_readl(host, PWREN);
+-		regs &= ~BIT(0);
++		regs &= ~BIT(host->slot_id);
+ 		mci_writel(host, PWREN, regs);
+ 		/* Reset our state machine after powering off */
+ 		dw_mci_ctrl_reset(host, SDMMC_CTRL_ALL_RESET_FLAGS);
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -1427,7 +1458,7 @@ static int dw_mci_switch_voltage(struct mmc_host *mmc, struct mmc_ios *ios)
+ 	struct dw_mci *host = mmc_priv(mmc);
+ 	const struct dw_mci_drv_data *drv_data = host->drv_data;
+ 	u32 uhs;
+-	u32 v18 = SDMMC_UHS_18V;
++	u32 v18 = SDMMC_UHS_18V << host->slot_id;
+ 	int ret;
+ 
+ 	if (drv_data && drv_data->switch_voltage)
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -1469,7 +1500,7 @@ static int dw_mci_get_ro(struct mmc_host *mmc)
+ 		read_only = gpio_ro;
+ 	else
+ 		read_only =
+-			mci_readl(host, WRTPRT) & BIT(0) ? 1 : 0;
++			mci_readl(host, WRTPRT) & BIT(host->slot_id) ? 1 : 0;
+ 
+ 	dev_dbg(&mmc->class_dev, "card is %s\n",
+ 		read_only ? "read-only" : "read-write");
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -1502,17 +1533,17 @@ static void dw_mci_hw_reset(struct mmc_host *mmc)
+ 	 * tRSTH >= 1us:   RST_n high period
+ 	 */
+ 	reset = mci_readl(host, RST_N);
+-	reset &= ~SDMMC_RST_HWACTIVE;
++	reset &= ~(SDMMC_RST_HWACTIVE << host->slot_id);
+ 	mci_writel(host, RST_N, reset);
+ 	usleep_range(1, 2);
+-	reset |= SDMMC_RST_HWACTIVE;
++	reset |= SDMMC_RST_HWACTIVE << host->slot_id;
+ 	mci_writel(host, RST_N, reset);
+ 	usleep_range(200, 300);
+ }
+ 
+ static void dw_mci_prepare_sdio_irq(struct dw_mci *host, bool prepare)
+ {
+-	const u32 clken_low_pwr = SDMMC_CLKEN_LOW_PWR;
++	const u32 clken_low_pwr = SDMMC_CLKEN_LOW_PWR << host->slot_id;
+ 	u32 clk_en_a_old;
+ 	u32 clk_en_a;
+ 
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -2955,6 +2994,27 @@ static void dw_mci_init_dma(struct dw_mci *host)
+ 		host->sg_cpu = dmam_alloc_coherent(host->dev,
+ 						   DESC_RING_BUF_SZ,
+ 						   &host->sg_dma, GFP_KERNEL);
++		if (!host->sg_cpu) {
++			/*
++			 * Coherent DMA alloc not available on this platform
++			 * (NOMMU, no uncached aperture). Fall back to plain
++			 * cached pages; we explicitly cache_writeback the
++			 * descriptor ring before each IDMAC kick — see
++			 * dw_mci_idmac_start_dma().
++			 */
++			host->sg_cpu = devm_kzalloc(host->dev,
++						    DESC_RING_BUF_SZ,
++						    GFP_KERNEL);
++			if (host->sg_cpu) {
++				/*
++				 * NOMMU + dma-direct: phys == dma_addr (1:1).
++				 * Revisit if an IOMMU layer ever appears on this SoC.
++				 */
++				host->sg_dma = virt_to_phys(host->sg_cpu);
++				dev_info(host->dev,
++					 "IDMAC: cached descriptor ring with manual cache sync\n");
++			}
++		}
+ 		if (!host->sg_cpu) {
+ 			dev_err(host->dev,
+ 				"%s: could not alloc DMA memory\n",
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index d734d010444d..f295d17f5bd6 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -3136,6 +3196,19 @@ static int dw_mci_parse_dt(struct dw_mci *host)
+ 	if (!host->data_addr_override)
+ 		device_property_read_u32(dev, "data-addr", &host->data_addr_override);
+ 
++	/*
++	 * Allow boards that wire their card on a non-zero physical slot
++	 * to opt in via DT (`snps,slot-id`). Default 0 preserves mainline
++	 * behavior — the WHY2025 badge uses slot 0 for its microSD and
++	 * doesn't set this, so it's generic plumbing here, not badge-specific.
++	 * With the upstream single-slot driver the index selects the
++	 * card_number field in SDMMC_CMD, the per-slot bits in
++	 * CLKENA/CTYPE/PWREN/CDETECT/WRTPRT/UHS_REG/RST_n, and the SDIO
++	 * interrupt bit index.
++	 */
++	device_property_read_u32(dev, "snps,slot-id", &host->slot_id);
++	host->sdio_irq = host->slot_id;
++
+ 	if (device_property_present(dev, "fifo-watermark-aligned"))
+ 		host->wm_aligned = true;
+ 
+diff --git a/drivers/mmc/host/dw_mmc.h b/drivers/mmc/host/dw_mmc.h
+index 9ffcd3946cff..10eb0b61371f 100644
+--- a/drivers/mmc/host/dw_mmc.h
++++ b/drivers/mmc/host/dw_mmc.h
+@@ -232,6 +232,7 @@ struct dw_mci {
+ 	int			irq;
+ 
+ 	int			sdio_irq;
++	u32			slot_id;
+ 
+ 	struct timer_list       cmd11_timer;
+ 	struct timer_list       cto_timer;

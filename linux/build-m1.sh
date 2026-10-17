@@ -671,6 +671,7 @@ if [[ "${EASYSTICK_CMD53_RETENTION_BB:-0}" == "1" ]]; then
 	}
 fi
 patches=(
+	0000-easystick-esp32-serial-resurrect.patch
 	0001-riscv-esp32p4-baseline.patch
 	0010-mm-nommu-userspace-pool.patch
 	0014-riscv-signal-mcause-hardening.patch
@@ -853,7 +854,8 @@ if $network_profile; then
 	patches+=(0061-easystick-dw-mmc-tx-dto-on-cmd-done.patch)
 fi
 for patch_name in "${patches[@]}"; do
-	if [[ "$patch_name" == 0022-esp32p4-systimer-level-trigger.patch ||
+	if [[ "$patch_name" == 0000-easystick-esp32-serial-resurrect.patch ||
+	      "$patch_name" == 0022-esp32p4-systimer-level-trigger.patch ||
 	      "$patch_name" == 0024-riscv-esp32p4-early-uart-marker.patch ||
 	      "$patch_name" == 0025-esp32p4-usb-jtag-earlycon.patch ||
 	      "$patch_name" == 0026-riscv-esp32p4-boot-markers.patch ||
@@ -906,6 +908,12 @@ for patch_name in "${patches[@]}"; do
 		src="${firmware_root}/linux/kernel-patches/${patch_name}"
 	else
 		src="${why_root}/patches/linux/${patch_name}"
+	fi
+	# kernel-7.2 carries 7.2-adapted versions of a few baseline patches under
+	# linux/kernel-patches/ using their upstream names; a real file there
+	# always wins over the locked WHY2025 copy (or its Git-object fallback).
+	if [[ -f "${firmware_root}/linux/kernel-patches/${patch_name}" ]]; then
+		src="${firmware_root}/linux/kernel-patches/${patch_name}"
 	fi
 	if [[ -f "$src" ]]; then
 		override_src="${EASYSTICK_KERNEL_PATCH_OVERRIDE_DIR:-}/${patch_name}"

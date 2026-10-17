@@ -1,8 +1,8 @@
 diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
-index 571bd9a..5e1d195 100644
+index f295d17f5bd6..748baba8801e 100644
 --- a/drivers/mmc/host/dw_mmc.c
 +++ b/drivers/mmc/host/dw_mmc.c
-@@ -104,6 +104,207 @@ struct idmac_desc {
+@@ -94,6 +94,207 @@ struct idmac_desc {
  /* Each descriptor can transfer up to 4KB of data in chained mode */
  #define DW_MCI_DESC_DATA_LENGTH	0x1000
  
@@ -210,120 +210,79 @@ index 571bd9a..5e1d195 100644
  #if defined(CONFIG_DEBUG_FS)
  static int dw_mci_req_show(struct seq_file *s, void *v)
  {
-@@ -595,12 +796,16 @@ static inline int dw_mci_prepare_desc64(struct dw_mci *host,
- 					 struct mmc_data *data,
- 					 unsigned int sg_len)
- {
-+	struct dw_mci_cmd53_trace_record *record =
-+		dw_mci_cmd53_trace_active(host);
- 	unsigned int desc_len;
- 	struct idmac_desc_64addr *desc_first, *desc_last, *desc;
- 	u32 val;
--	int i;
-+	int i, ret;
- 
- 	desc_first = desc_last = desc = host->sg_cpu;
-+	if (record)
-+		record->desc_first = 0;
- 
- 	for (i = 0; i < sg_len; i++) {
- 		unsigned int length = sg_dma_len(&data->sg[i]);
-@@ -619,10 +824,19 @@ static inline int dw_mci_prepare_desc64(struct dw_mci *host,
- 			 * isn't still owned by IDMAC as IDMAC's write
- 			 * ops and CPU's read ops are asynchronous.
- 			 */
--			if (readl_poll_timeout_atomic(&desc->des0, val,
--						!(val & IDMAC_DES0_OWN),
--						10, 100 * USEC_PER_MSEC))
-+			if (record && desc == desc_first)
-+				record->own_before = READ_ONCE(desc->des0);
-+			ret = readl_poll_timeout_atomic(&desc->des0, val,
-+							!(val & IDMAC_DES0_OWN),
-+							10,
-+							100 * USEC_PER_MSEC);
-+			if (record && desc == desc_first)
-+				record->own_after_poll = val;
-+			if (ret) {
-+				if (record)
-+					record->own_timeout = 1;
- 				goto err_own_bit;
-+			}
- 
- 			/*
- 			 * Set the OWN bit and disable interrupts
-@@ -652,6 +866,14 @@ static inline int dw_mci_prepare_desc64(struct dw_mci *host,
- 	/* Set last descriptor */
- 	desc_last->des0 &= ~(IDMAC_DES0_CH | IDMAC_DES0_DIC);
- 	desc_last->des0 |= IDMAC_DES0_LD;
-+	if (record) {
-+		record->desc_last = desc_last - desc_first;
-+		record->desc_count = record->desc_last + 1;
-+		record->desc_buf = (u64)le32_to_cpu(desc_first->des4) |
-+			((u64)le32_to_cpu(desc_first->des5) << 32);
-+		record->desc_len = le32_to_cpu(desc_first->des2) & 0x1fff;
-+		record->own_submit = le32_to_cpu(READ_ONCE(desc_first->des0));
-+	}
- 
- 	return 0;
- err_own_bit:
-@@ -667,12 +889,16 @@ static inline int dw_mci_prepare_desc32(struct dw_mci *host,
- 					 struct mmc_data *data,
- 					 unsigned int sg_len)
+@@ -582,6 +783,8 @@ static int dw_mci_idmac_init(struct dw_mci *host)
+ static inline int dw_mci_prepare_desc(struct dw_mci *host, struct mmc_data *data,
+ 				      unsigned int sg_len, bool is_64bit)
  {
 +	struct dw_mci_cmd53_trace_record *record =
 +		dw_mci_cmd53_trace_active(host);
  	unsigned int desc_len;
  	struct idmac_desc *desc_first, *desc_last, *desc;
- 	u32 val;
--	int i;
-+	int i, ret;
- 
- 	desc_first = desc_last = desc = host->sg_cpu;
+ 	struct idmac_desc_64addr *desc64_first, *desc64_last, *desc64;
+@@ -592,6 +795,8 @@ static inline int dw_mci_prepare_desc(struct dw_mci *host, struct mmc_data *data
+ 		desc64_first = desc64_last = desc64 = host->sg_cpu;
+ 	else
+ 		desc_first = desc_last = desc = host->sg_cpu;
 +	if (record)
 +		record->desc_first = 0;
  
  	for (i = 0; i < sg_len; i++) {
  		unsigned int length = sg_dma_len(&data->sg[i]);
-@@ -691,11 +917,20 @@ static inline int dw_mci_prepare_desc32(struct dw_mci *host,
+@@ -610,14 +815,27 @@ static inline int dw_mci_prepare_desc(struct dw_mci *host, struct mmc_data *data
  			 * isn't still owned by IDMAC as IDMAC's write
  			 * ops and CPU's read ops are asynchronous.
  			 */
--			if (readl_poll_timeout_atomic(&desc->des0, val,
--						      IDMAC_OWN_CLR64(val),
--						      10,
--						      100 * USEC_PER_MSEC))
-+			if (record && desc == desc_first)
-+				record->own_before =
-+					le32_to_cpu(READ_ONCE(desc->des0));
-+			ret = readl_poll_timeout_atomic(&desc->des0, val,
-+							IDMAC_OWN_CLR64(val),
-+							10,
-+							100 * USEC_PER_MSEC);
-+			if (record && desc == desc_first)
-+				record->own_after_poll = le32_to_cpu(val);
-+			if (ret) {
+-			if (is_64bit)
++			if (is_64bit) {
++				if (record && desc64 == desc64_first)
++					record->own_before = READ_ONCE(desc64->des0);
+ 				err = readl_poll_timeout_atomic(&desc64->des0, val,
+ 					IDMAC_OWN_CLR64(val), 10, 100 * USEC_PER_MSEC);
+-			else
++				if (record && desc64 == desc64_first)
++					record->own_after_poll = val;
++			} else {
++				if (record && desc == desc_first)
++					record->own_before =
++						le32_to_cpu(READ_ONCE(desc->des0));
+ 				err = readl_poll_timeout_atomic(&desc->des0, val,
+ 					IDMAC_OWN_CLR64(val), 10, 100 * USEC_PER_MSEC);
+-			if (err)
++				if (record && desc == desc_first)
++					record->own_after_poll = le32_to_cpu(val);
++			}
++			if (err) {
 +				if (record)
 +					record->own_timeout = 1;
  				goto err_own_bit;
 +			}
  
- 			/*
- 			 * Set the OWN bit and disable interrupts
-@@ -726,6 +961,13 @@ static inline int dw_mci_prepare_desc32(struct dw_mci *host,
- 	desc_last->des0 &= cpu_to_le32(~(IDMAC_DES0_CH |
- 				       IDMAC_DES0_DIC));
- 	desc_last->des0 |= cpu_to_le32(IDMAC_DES0_LD);
+ 			des0 = IDMAC_DES0_OWN | IDMAC_DES0_DIC | IDMAC_DES0_CH;
+ 			if (is_64bit)
+@@ -664,6 +882,22 @@ static inline int dw_mci_prepare_desc(struct dw_mci *host, struct mmc_data *data
+ 		desc_last->des0 &= cpu_to_le32(~(IDMAC_DES0_CH | IDMAC_DES0_DIC));
+ 		desc_last->des0 |= cpu_to_le32(IDMAC_DES0_LD);
+ 	}
 +	if (record) {
-+		record->desc_last = desc_last - desc_first;
-+		record->desc_count = record->desc_last + 1;
-+		record->desc_buf = le32_to_cpu(desc_first->des2);
-+		record->desc_len = le32_to_cpu(desc_first->des1) & 0x1fff;
-+		record->own_submit = le32_to_cpu(READ_ONCE(desc_first->des0));
++		if (is_64bit) {
++			record->desc_last = desc64_last - desc64_first;
++			record->desc_count = record->desc_last + 1;
++			record->desc_buf = (u64)le32_to_cpu(desc64_first->des4) |
++				((u64)le32_to_cpu(desc64_first->des5) << 32);
++			record->desc_len = le32_to_cpu(desc64_first->des2) & 0x1fff;
++			record->own_submit = le32_to_cpu(READ_ONCE(desc64_first->des0));
++		} else {
++			record->desc_last = desc_last - desc_first;
++			record->desc_count = record->desc_last + 1;
++			record->desc_buf = le32_to_cpu(desc_first->des2);
++			record->desc_len = le32_to_cpu(desc_first->des1) & 0x1fff;
++			record->own_submit = le32_to_cpu(READ_ONCE(desc_first->des0));
++		}
 +	}
  
  	return 0;
  err_own_bit:
-@@ -1105,21 +1347,41 @@ disable:
+@@ -1017,21 +1251,41 @@ static void dw_mci_ctrl_thld(struct dw_mci *host, struct mmc_data *data)
  
  static int dw_mci_submit_data_dma(struct dw_mci *host, struct mmc_data *data)
  {
@@ -367,7 +326,7 @@ index 571bd9a..5e1d195 100644
  
  	host->using_dma = 1;
  
-@@ -1150,7 +1412,9 @@ static int dw_mci_submit_data_dma(struct dw_mci *host, struct mmc_data *data)
+@@ -1062,7 +1316,9 @@ static int dw_mci_submit_data_dma(struct dw_mci *host, struct mmc_data *data)
  	mci_writel(host, INTMASK, temp);
  	spin_unlock_irqrestore(&host->irq_lock, irqflags);
  
@@ -378,7 +337,7 @@ index 571bd9a..5e1d195 100644
  		host->dma_ops->stop(host);
  		/* We can't do DMA, try PIO for this one */
  		dev_dbg(host->dev,
-@@ -1363,6 +1627,7 @@ static void __dw_mci_start_request(struct dw_mci *host,
+@@ -1272,6 +1528,7 @@ static void dw_mci_start_request(struct dw_mci *host, struct mmc_command *cmd)
  
  	data = cmd->data;
  	if (data) {
@@ -386,7 +345,7 @@ index 571bd9a..5e1d195 100644
  		dw_mci_set_data_timeout(host, data->timeout_ns);
  		mci_writel(host, BYTCNT, data->blksz*data->blocks);
  		mci_writel(host, BLKSIZ, data->blksz);
-@@ -2034,6 +2299,7 @@ static int dw_mci_data_complete(struct dw_mci *host, struct mmc_data *data)
+@@ -1880,6 +2137,7 @@ static int dw_mci_data_complete(struct dw_mci *host, struct mmc_data *data)
  		data->bytes_xfered = data->blocks * data->blksz;
  		data->error = 0;
  	}
@@ -394,7 +353,7 @@ index 571bd9a..5e1d195 100644
  
  	return data->error;
  }
-@@ -2744,6 +3010,7 @@ static void dw_mci_read_data_pio(struct dw_mci *host, bool dto)
+@@ -2589,6 +2847,7 @@ static void dw_mci_read_data_pio(struct dw_mci *host, bool dto)
  				break;
  			dw_mci_pull_data(host, (void *)(buf + offset), len);
  			data->bytes_xfered += len;
@@ -402,13 +361,12 @@ index 571bd9a..5e1d195 100644
  			offset += len;
  			remain -= len;
  		} while (remain);
-@@ -2850,10 +3117,16 @@ static void dw_mci_handle_cd(struct dw_mci *host)
+@@ -2693,9 +2952,15 @@ static void dw_mci_handle_cd(struct dw_mci *host)
  static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
  {
  	struct dw_mci *host = dev_id;
 +	struct dw_mci_cmd53_trace_record *trace;
  	u32 pending;
- 	struct dw_mci_slot *slot = host->slot;
  
  	pending = mci_readl(host, MINTSTS); /* read-only mask reg */
 +	trace = dw_mci_cmd53_trace_active(host);
@@ -419,7 +377,7 @@ index 571bd9a..5e1d195 100644
  
  	if (pending) {
  		/* Check volt switch first, since it can look like an error */
-@@ -2887,6 +3160,8 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
+@@ -2729,6 +2994,8 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
  
  		if (pending & DW_MCI_DATA_ERROR_FLAGS) {
  			spin_lock(&host->irq_lock);
@@ -428,7 +386,7 @@ index 571bd9a..5e1d195 100644
  
  			if (host->quirks & DW_MMC_QUIRK_EXTENDED_TMOUT)
  				timer_delete(&host->dto_timer);
-@@ -2909,6 +3184,8 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
+@@ -2751,6 +3018,8 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
  
  		if (pending & SDMMC_INT_DATA_OVER) {
  			spin_lock(&host->irq_lock);
@@ -437,7 +395,7 @@ index 571bd9a..5e1d195 100644
  
  			timer_delete(&host->dto_timer);
  
-@@ -2967,7 +3244,13 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
+@@ -2809,7 +3078,13 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
  	/* Handle IDMA interrupts */
  	if (host->dma_64bit_address == 1) {
  		pending = mci_readl(host, IDSTS64);
@@ -451,7 +409,7 @@ index 571bd9a..5e1d195 100644
  			mci_writel(host, IDSTS64, SDMMC_IDMAC_INT_TI |
  							SDMMC_IDMAC_INT_RI);
  			mci_writel(host, IDSTS64, SDMMC_IDMAC_INT_NI);
-@@ -2976,7 +3259,13 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
+@@ -2818,7 +3093,13 @@ static irqreturn_t dw_mci_interrupt(int irq, void *dev_id)
  		}
  	} else {
  		pending = mci_readl(host, IDSTS);
@@ -465,7 +423,7 @@ index 571bd9a..5e1d195 100644
  			mci_writel(host, IDSTS, SDMMC_IDMAC_INT_TI |
  							SDMMC_IDMAC_INT_RI);
  			mci_writel(host, IDSTS, SDMMC_IDMAC_INT_NI);
-@@ -3310,6 +3599,7 @@ exit:
+@@ -3125,6 +3406,7 @@ static void dw_mci_cto_timer(struct timer_list *t)
  static void dw_mci_dto_timer(struct timer_list *t)
  {
  	struct dw_mci *host = timer_container_of(host, t, dto_timer);
@@ -473,7 +431,7 @@ index 571bd9a..5e1d195 100644
  	unsigned long irqflags;
  	u32 pending;
  
-@@ -3344,6 +3634,9 @@ static void dw_mci_dto_timer(struct timer_list *t)
+@@ -3159,6 +3441,9 @@ static void dw_mci_dto_timer(struct timer_list *t)
  		 * and report a data timeout to the core.
  		 */
  		host->data_status = SDMMC_INT_DRTO;
@@ -483,8 +441,8 @@ index 571bd9a..5e1d195 100644
  		set_bit(EVENT_DATA_ERROR, &host->pending_events);
  		set_bit(EVENT_DATA_COMPLETE, &host->pending_events);
  		queue_work(system_bh_wq, &host->bh_work);
-@@ -3625,6 +3918,10 @@ int dw_mci_probe(struct dw_mci *host)
- 		dev_dbg(host->dev, "slot %d init failed\n", i);
+@@ -3452,6 +3737,10 @@ int dw_mci_probe(struct dw_mci *host)
+ 		dev_dbg(host->dev, "host init failed\n");
  		goto err_dmaunmap;
  	}
 +	ret = device_create_file(host->dev, &dev_attr_cmd53_rx_trace);
@@ -492,21 +450,21 @@ index 571bd9a..5e1d195 100644
 +		dev_warn(host->dev,
 +			 "could not create CMD53 RX trace attribute: %d\n", ret);
  
- 	/* Now that slots are all setup, we can enable card detect */
+ 	/* Now that host is setup, we can enable card detect */
  	dw_mci_enable_cd(host);
-@@ -3650,6 +3947,7 @@ EXPORT_SYMBOL(dw_mci_probe);
+@@ -3477,6 +3766,7 @@ EXPORT_SYMBOL(dw_mci_probe);
  void dw_mci_remove(struct dw_mci *host)
  {
- 	dev_dbg(host->dev, "remove slot\n");
+ 	dev_dbg(host->dev, "remove host\n");
 +	device_remove_file(host->dev, &dev_attr_cmd53_rx_trace);
- 	if (host->slot)
- 		dw_mci_cleanup_slot(host->slot);
+ 	dw_mci_cleanup_host(host);
  
+ 	mci_writel(host, RINTSTS, 0xFFFFFFFF);
 diff --git a/drivers/mmc/host/dw_mmc.h b/drivers/mmc/host/dw_mmc.h
-index 648b4a5..ac3fe0f 100644
+index 10eb0b61371f..2ff80c0452b4 100644
 --- a/drivers/mmc/host/dw_mmc.h
 +++ b/drivers/mmc/host/dw_mmc.h
-@@ -56,6 +56,67 @@ struct dw_mci_dma_slave {
+@@ -54,6 +54,67 @@ struct dw_mci_dma_slave {
  	enum dma_transfer_direction direction;
  };
  
@@ -572,12 +530,12 @@ index 648b4a5..ac3fe0f 100644
 +};
 +
  /**
-  * struct dw_mci - MMC controller state shared between all slots
+  * struct dw_mci - MMC controller state
   * @lock: Spinlock protecting the queue and associated data.
-@@ -185,6 +246,9 @@ struct dw_mci {
+@@ -187,6 +248,9 @@ struct dw_mci {
  	const struct dw_mci_dma_ops	*dma_ops;
  	/* For idmac */
- 	unsigned int		ring_size;
+ 	unsigned short		desc_num;
 +	struct dw_mci_cmd53_trace_record cmd53_trace[DW_MCI_CMD53_TRACE_DEPTH];
 +	u32			cmd53_trace_head;
 +	u32			cmd53_trace_active;
