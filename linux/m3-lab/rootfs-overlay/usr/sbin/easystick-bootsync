@@ -1,6 +1,8 @@
 #!/bin/sh
-# Import boot.img only after the USB host has issued SCSI eject. The empty LUN
-# file attribute is the ownership hand-off; this daemon never forces eject.
+# Import the USB drive (boot.img) and save it to flash, without an eject or a
+# reboot.  While the host owns the LUN, a change is imported once the host
+# has not written for SETTLE_SECONDS.  A SCSI eject (the empty LUN file
+# attribute) imports at once.  This daemon never forces an eject.
 
 BOOT_IMG="/tmp/boot.img"
 LUN_CTL="/usr/sbin/easystick-usb-lun"
@@ -12,6 +14,12 @@ umask 077
 log() {
 	echo "[bootsync] $1"
 }
+es_log() {
+	log "$1"
+}
+
+# apply_password and install_keys, shared with S05easystick-tmpfs.
+. /usr/lib/easystick/credentials.sh
 
 boot_hash() {
 	HASH=""
@@ -62,8 +70,16 @@ lun_state() {
 
 FLASH_HASH_FILE="/run/.boot-flash-md5"
 
-# auto_reboot=no in config.txt keeps a staged image in PSRAM until the next
-# manual reboot, as before.
+# The host's writes change boot.img's mtime.  SEEN_REF carries the mtime of
+# the image last looked at (S05 sets it before the LUN is attached), and both
+# the test and touch are shell builtins, so the 1 s poll execs nothing.
+# test -nt compares whole seconds: a write in the same second as SEEN_REF is
+# not seen, but the import waits SETTLE_SECONDS after that second anyway.
+SEEN_REF="/run/.bootsync-seen"
+SETTLE_SECONDS=3
+
+# auto_reboot=no in config.txt: when the kernel cannot write flash, keep the
+# staged image in PSRAM until a manual reboot instead of rebooting to save it.
 auto_reboot_enabled() {
 	[ -f /tmp/config.txt ] || return 0
 	while IFS= read -r l || [ -n "$l" ]; do
@@ -82,6 +98,13 @@ reattach() {
 	log "USB storage reattached"
 }
 
+# After an eject the image goes back to the host; an import made while the
+# host owns the LUN never took it away.
+release() {
+	[ "$IMPORT_MODE" = eject ] || return 0
+	reattach
+}
+
 # sleep is not a NOFORK applet, so `sleep 1` is a vfork+exec every tick (#29).
 # read -t on a FIFO that nobody writes waits in the shell itself.
 TICK_FIFO=/run/.bootsync-tick
@@ -93,14 +116,155 @@ tick() {
 	fi
 }
 
+# Validate a snapshot of the drive, save it to flash and apply what changed.
+# Returns 1 when the snapshot was not imported.
+import_snapshot() {
+	SNAP_IMG="/run/boot-snap.$$"
+	STAGE="/run/.bootsync-stage.$$"
+	rm -rf "$SNAP_IMG" "$STAGE"
+
+	if ! cp -f "$BOOT_IMG" "$SNAP_IMG" 2>/dev/null; then
+		log "ERROR: snapshot copy failed"
+		release
+		return 1
+	fi
+	lun_state
+	if [ "$IMPORT_MODE" = eject ] && [ "$LUN_STATE" != "device-owned" ]; then
+		log "ERROR: ownership changed during snapshot"
+		rm -f "$SNAP_IMG"
+		return 1
+	fi
+	if [ "$IMPORT_MODE" = settle ] && [ "$BOOT_IMG" -nt "$SEEN_REF" ]; then
+		# The host wrote again while the snapshot was taken.
+		rm -f "$SNAP_IMG"
+		return 1
+	fi
+
+	IMG_SIZE=$(wc -c < "$SNAP_IMG" 2>/dev/null || echo 0)
+	if [ "$IMG_SIZE" -ne 262144 ]; then
+		log "ERROR: rejected boot image size=$IMG_SIZE (expected 262144)"
+		rm -f "$SNAP_IMG"
+		release
+		return 1
+	fi
+	if ! boot_hash "$SNAP_IMG"; then
+		log "ERROR: could not hash snapshot"
+		rm -f "$SNAP_IMG"
+		release
+		return 1
+	fi
+	NEW_HASH=$HASH
+	FLASH_HASH=""
+	[ -f "$FLASH_HASH_FILE" ] && read -r FLASH_HASH < "$FLASH_HASH_FILE"
+	if [ "$NEW_HASH" = "$FLASH_HASH" ]; then
+		log "Drive unchanged since it was last saved"
+		rm -f "$SNAP_IMG"
+		release
+		return 0
+	fi
+
+	if ! mount -t vfat -o ro,loop "$SNAP_IMG" "$MNT_POINT" 2>/dev/null; then
+		log "ERROR: rejected invalid FAT snapshot"
+		rm -f "$SNAP_IMG"
+		release
+		return 1
+	fi
+
+	VALID=1
+	mkdir -p "$STAGE"
+	for name in wpa_supplicant.conf config.txt credentials.txt authorized_keys; do
+		path="$MNT_POINT/$name"
+		[ ! -e "$path" ] && continue
+		size=$(wc -c < "$path" 2>/dev/null || echo 65537)
+		if [ ! -f "$path" ] || [ "$size" -le 0 ] || [ "$size" -gt 65536 ]; then
+			log "ERROR: rejected $name size=$size"
+			VALID=0
+		elif ! cp -f "$path" "$STAGE/$name"; then
+			VALID=0
+		fi
+	done
+	RESET=0
+	{ [ -e "$MNT_POINT/factory-reset" ] || [ -e "$MNT_POINT/factory-reset.txt" ]; } && RESET=1
+	if ! umount "$MNT_POINT" 2>/dev/null; then
+		log "ERROR: snapshot unmount failed"
+		VALID=0
+	fi
+	if [ "$VALID" -ne 1 ]; then
+		rm -rf "$SNAP_IMG" "$STAGE"
+		release
+		return 1
+	fi
+
+	# The helper copies and verifies the exact snapshot in PSRAM and asks the
+	# kernel to write it to the inactive A/B slot (exit 0).  Exit 2: the kernel
+	# could not, and boot-shim writes it at the next normal reboot.
+	rc=0
+	"$BOOT_COMMIT" "$SNAP_IMG" || rc=$?
+	case "$rc" in
+		0)
+			log "Saved to flash hash=$NEW_HASH"
+			echo "$NEW_HASH" > "$FLASH_HASH_FILE"
+			;;
+		2) log "Staged for the next reboot hash=$NEW_HASH (the kernel could not write flash)" ;;
+		*)
+			log "ERROR: durable boot-image staging failed; the drive is not saved"
+			rm -rf "$SNAP_IMG" "$STAGE"
+			release
+			return 1
+			;;
+	esac
+	rm -f "$SNAP_IMG"
+
+	# Publish the new config only after it is saved, so a failed save leaves
+	# /tmp untouched and a retry still sees the change.
+	NET_CHANGED=0
+	for name in wpa_supplicant.conf config.txt; do
+		if [ -f "$STAGE/$name" ] && file_changed "$STAGE/$name" "/tmp/$name"; then
+			mv -f "$STAGE/$name" "/tmp/$name"
+			NET_CHANGED=1
+		fi
+	done
+	if [ -f "$STAGE/credentials.txt" ] &&
+		file_changed "$STAGE/credentials.txt" /tmp/credentials.txt; then
+		apply_password "$STAGE/credentials.txt"
+		mv -f "$STAGE/credentials.txt" /tmp/credentials.txt
+	fi
+	[ -f "$STAGE/authorized_keys" ] && install_keys "$STAGE/authorized_keys"
+	rm -rf "$STAGE"
+
+	release
+	if [ "$RESET" -eq 1 ]; then
+		# The reset runs in S05 at boot: restart into it.
+		log "factory-reset on the drive; rebooting to reset"
+		tick 2
+		reboot
+		while true; do tick 60; done
+	fi
+	if [ "$rc" -eq 2 ] && auto_reboot_enabled; then
+		# A staged image survives only a software reboot.
+		log "Rebooting to commit the image to flash (auto_reboot=no in config.txt turns this off)"
+		tick 2
+		reboot
+		while true; do tick 60; done
+	fi
+	if [ "$NET_CHANGED" -eq 1 ]; then
+		log "Configuration changed; reloading network"
+		/etc/init.d/S40network reload >/dev/null 2>&1 &
+	fi
+	return 0
+}
+
 mkdir -p "$MNT_POINT"
 [ -p "$TICK_FIFO" ] || mkfifo -m 600 "$TICK_FIFO" 2>/dev/null || true
 while [ ! -f "$BOOT_IMG" ] || [ ! -x "$LUN_CTL" ]; do
 	tick 2
 done
+[ -f "$SEEN_REF" ] || touch -r "$BOOT_IMG" "$SEEN_REF"
 
 LAST_STATE=""
-log "Daemon started; use the host's safe-eject action to apply configuration"
+PENDING=0
+QUIET=0
+log "Daemon started; drive changes are saved ${SETTLE_SECONDS} s after the host stops writing"
 
 while true; do
 	tick 1
@@ -109,123 +273,27 @@ while true; do
 		log "ownership=$LUN_STATE"
 		LAST_STATE=$LUN_STATE
 	fi
-	[ "$LUN_STATE" = "device-owned" ] || continue
-
-	SNAP_IMG="/run/boot-snap.$$"
-	WPA_STAGE="/run/.bootsync-wpa.$$"
-	CFG_STAGE="/run/.bootsync-config.$$"
-	rm -f "$SNAP_IMG" "$WPA_STAGE" "$CFG_STAGE"
-
-	if ! cp -f "$BOOT_IMG" "$SNAP_IMG" 2>/dev/null; then
-		log "ERROR: snapshot copy failed"
-		reattach
-		continue
-	fi
-	lun_state
-	if [ "$LUN_STATE" != "device-owned" ]; then
-		log "ERROR: ownership changed during snapshot"
-		rm -f "$SNAP_IMG"
-		continue
-	fi
-
-	IMG_SIZE=$(wc -c < "$SNAP_IMG" 2>/dev/null || echo 0)
-	if [ "$IMG_SIZE" -ne 262144 ]; then
-		log "ERROR: rejected boot image size=$IMG_SIZE (expected 262144)"
-		rm -f "$SNAP_IMG"
-		reattach
-		continue
-	fi
-	if ! boot_hash "$SNAP_IMG"; then
-		log "ERROR: could not hash snapshot"
-		rm -f "$SNAP_IMG"
-		reattach
-		continue
-	fi
-	NEW_HASH=$HASH
-
-	if ! mount -t vfat -o ro,loop "$SNAP_IMG" "$MNT_POINT" 2>/dev/null; then
-		log "ERROR: rejected invalid FAT snapshot"
-		rm -f "$SNAP_IMG"
-		reattach
-		continue
-	fi
-
-	VALID=1
-	for name in wpa_supplicant.conf config.txt; do
-		path="$MNT_POINT/$name"
-		[ ! -e "$path" ] && continue
-		size=$(wc -c < "$path" 2>/dev/null || echo 65537)
-		if [ ! -f "$path" ] || [ "$size" -le 0 ] || [ "$size" -gt 65536 ]; then
-			log "ERROR: rejected $name size=$size"
-			VALID=0
-		fi
-	done
-	if [ "$VALID" -eq 1 ]; then
-		[ ! -f "$MNT_POINT/wpa_supplicant.conf" ] ||
-			cp -f "$MNT_POINT/wpa_supplicant.conf" "$WPA_STAGE" || VALID=0
-		[ ! -f "$MNT_POINT/config.txt" ] ||
-			cp -f "$MNT_POINT/config.txt" "$CFG_STAGE" || VALID=0
-	fi
-	if ! umount "$MNT_POINT" 2>/dev/null; then
-		log "ERROR: snapshot unmount failed"
-		VALID=0
-	fi
-	if [ "$VALID" -ne 1 ]; then
-		rm -f "$SNAP_IMG" "$WPA_STAGE" "$CFG_STAGE"
-		reattach
-		continue
-	fi
-
-	CONFIG_CHANGED=0
-	WPA_NEW=0
-	CFG_NEW=0
-	if [ -f "$WPA_STAGE" ] && file_changed "$WPA_STAGE" /tmp/wpa_supplicant.conf; then
-		WPA_NEW=1
-		CONFIG_CHANGED=1
-	fi
-	if [ -f "$CFG_STAGE" ] && file_changed "$CFG_STAGE" /tmp/config.txt; then
-		CFG_NEW=1
-		CONFIG_CHANGED=1
-	fi
-
-	# The helper copies and verifies the exact snapshot in PSRAM, then writes
-	# a commit record last.  Boot-shim validates that record and performs the
-	# A/B flash update during the next normal reboot.
-	if [ -x "$BOOT_COMMIT" ] && "$BOOT_COMMIT" "$SNAP_IMG"; then
-		log "Validated snapshot staged for durable A/B commit hash=$NEW_HASH"
-	else
-		log "ERROR: durable boot-image staging failed; no reboot commit requested"
-		rm -f "$SNAP_IMG" "$WPA_STAGE" "$CFG_STAGE"
-		reattach
-		continue
-	fi
-	rm -f "$SNAP_IMG"
-
-	# Publish the new config only after the commit succeeded, so a failed
-	# commit leaves /tmp untouched and a retry still sees the change.
-	[ "$WPA_NEW" -eq 1 ] && mv -f "$WPA_STAGE" /tmp/wpa_supplicant.conf
-	[ "$CFG_NEW" -eq 1 ] && mv -f "$CFG_STAGE" /tmp/config.txt
-	rm -f "$WPA_STAGE" "$CFG_STAGE"
-
-	if ! reattach; then
-		continue
-	fi
-	LAST_STATE="host-owned"
-	# A staged image survives only a software reboot, and with only the
-	# carrier's USB-A attached nobody can run one: unplugging dropped every
-	# edit.  Reboot now unless flash already holds this image.
-	FLASH_HASH=""
-	[ -f "$FLASH_HASH_FILE" ] && read -r FLASH_HASH < "$FLASH_HASH_FILE"
-	if [ "$NEW_HASH" != "$FLASH_HASH" ] && auto_reboot_enabled; then
-		log "Rebooting to commit the image to flash (auto_reboot=no in config.txt turns this off)"
-		tick 2
-		reboot
-		while true; do tick 60; done
-	fi
-	if [ "$CONFIG_CHANGED" -eq 1 ]; then
-		log "Configuration changed; reloading network"
-		/etc/init.d/S40network reload >/dev/null 2>&1 &
-	else
-		log "Validated snapshot contained no configuration change"
-	fi
+	case "$LUN_STATE" in
+		device-owned)
+			IMPORT_MODE=eject
+			;;
+		host-owned)
+			if [ "$BOOT_IMG" -nt "$SEEN_REF" ]; then
+				touch -r "$BOOT_IMG" "$SEEN_REF"
+				PENDING=1
+				QUIET=0
+				continue
+			fi
+			[ "$PENDING" -eq 1 ] || continue
+			QUIET=$((QUIET + 1))
+			[ "$QUIET" -ge "$SETTLE_SECONDS" ] || continue
+			IMPORT_MODE=settle
+			;;
+		*)
+			continue
+			;;
+	esac
+	PENDING=0
+	import_snapshot && [ "$IMPORT_MODE" = eject ] && LAST_STATE="host-owned"
+	[ "$IMPORT_MODE" = settle ] || touch -r "$BOOT_IMG" "$SEEN_REF"
 done

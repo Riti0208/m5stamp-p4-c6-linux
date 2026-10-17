@@ -53,8 +53,8 @@ generate_credentials() {
 	esac
 	{
 		echo "# EasyStick credentials, generated on first boot."
-		echo "# password= is the SSH/console password of user m5.  Edit it, use the"
-		echo "# host's safe-eject action, then reboot: it is applied at every boot."
+		echo "# password= is the SSH/console password of user m5.  Edit and save it:"
+		echo "# it is applied a few seconds later and at every boot."
 		echo "# The Wi-Fi settings in effect are wpa_supplicant.conf (ssid/psk) and"
 		echo "# config.txt (channel=); ssid/psk below are the generated values."
 		echo "device_id=$id"
@@ -93,46 +93,8 @@ generate_credentials() {
 	es_log "ES_CREDENTIALS: also in credentials.txt on the USB drive and /tmp/credentials.txt (root)"
 }
 
-# Apply password= from credentials.txt to user m5.  /etc is read-only squashfs,
-# so a patched copy of /etc/shadow on /run is bind-mounted over it each boot.
-apply_password() {
-	[ -f "$1" ] || return 0
-	cr=$(printf '\r')
-	pw=$(sed -e "s/$cr\$//" "$1" | sed -n 's/^password=//p' | head -n1)
-	case "$pw" in
-		''|*:*) es_log "ES_CREDENTIALS: no usable password= in credentials.txt"; return 0 ;;
-	esac
-	if [ "${#pw}" -lt 8 ] || [ "${#pw}" -gt 64 ]; then
-		es_log "ES_CREDENTIALS: password= must be 8-64 characters; m5 password login stays disabled"
-		return 0
-	fi
-	hash=$(printf '%s\n' "$pw" | cryptpw -m sha512 2>/dev/null) || hash=""
-	case "$hash" in
-		'$6$'*) ;;
-		*) es_log "ES_CREDENTIALS FAIL: cryptpw unavailable; m5 password login stays disabled"; return 0 ;;
-	esac
-	if sed "s|^m5:[^:]*:|m5:${hash}:|" /etc/shadow > /run/shadow &&
-		chmod 600 /run/shadow && mount --bind /run/shadow /etc/shadow; then
-		es_log "ES_CREDENTIALS: m5 password applied from credentials.txt"
-	else
-		es_log "ES_CREDENTIALS FAIL: could not apply the password; m5 password login stays disabled"
-	fi
-}
-
-# authorized_keys on the USB drive -> /home/m5/.ssh (#25).  /home is a tmpfs
-# overlay, so this runs every boot and the drive stays the source of truth.
-install_keys() {
-	[ -f "$1" ] || return 0
-	d=/home/m5/.ssh
-	cr=$(printf '\r')
-	mkdir -p "$d"
-	sed -e "s/$cr\$//" "$1" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' > "$d/authorized_keys" || true
-	chown -R 1000:1000 "$d" 2>/dev/null || true
-	chmod 700 "$d"
-	chmod 600 "$d/authorized_keys"
-	n=$(grep -c '' "$d/authorized_keys" || true)
-	es_log "ES_SSH_KEYS: $n key(s) installed for m5 from authorized_keys"
-}
+# apply_password and install_keys; bootsync uses them too.
+. /usr/lib/easystick/credentials.sh
 
 start() {
 	es_log "ES_TMPFS BEGIN"
@@ -251,8 +213,8 @@ start() {
 			fi
 		else
 			es_log "ES_BOOT_FAT: successfully restored valid FAT image from PSRAM"
-			# What flash holds; bootsync reboots to commit only an image
-			# that differs from it.
+			# What flash holds; bootsync writes only an image that
+			# differs from it.
 			md5sum /tmp/boot.img 2>/dev/null | cut -d' ' -f1 > /run/.boot-flash-md5 || true
 		fi
 	fi
@@ -280,15 +242,15 @@ start() {
 		[ "$(devmem 0x499bf010 32 2>/dev/null)" = 0x4641494C ]; then
 		es_log "ES_BOOT_UPDATE FAIL: the last USB drive changes could not be saved to flash; the drive shows the previous contents"
 		printf '%s\r\n' "The last changes to this drive could not be saved to flash." \
-			"The drive shows the previous contents. Make the changes again," \
-			"safe-eject and reboot. Delete this file when done." \
+			"The drive shows the previous contents. Make the changes again." \
+			"Delete this file when done." \
 			> /boot/UPDATE-FAILED.txt 2>/dev/null || true
 		devmem 0x499bf010 32 0 2>/dev/null || true
 	fi
 
 	# Factory reset (#32): an empty file named factory-reset on the USB drive
 	# restores the shipped template, so the code below generates new
-	# credentials and the reset image is committed at the next reboot.
+	# credentials and saves the reset image to flash.
 	# factory-reset.txt too: Notepad adds the extension.
 	if { [ -f /boot/factory-reset ] || [ -f /boot/factory-reset.txt ]; } &&
 		[ -f /etc/easystick/boot-template.img ]; then
@@ -354,17 +316,27 @@ EOF
 		sync
 		umount /boot 2>/dev/null || true
 		es_log "ES_BOOT_FS SYNC_UMOUNT OK"
-		# Stage the image with the new credentials; boot-shim writes it to the
-		# A/B flash slots on the next normal reboot.  Until then a power cycle
-		# loses it and the next boot generates new values.
+		# Save the image with the new credentials to the A/B flash slots.  If
+		# the kernel cannot write flash it stays staged and boot-shim writes
+		# it at the next normal reboot; until then a power cycle loses it and
+		# the next boot generates new values.
 		if [ "${CRED_NEW:-0}" -eq 1 ] && [ -f /tmp/boot.img ] && [ -x /usr/sbin/easystick-boot-commit ]; then
-			if /usr/sbin/easystick-boot-commit /tmp/boot.img; then
-				es_log "ES_CREDENTIALS: staged; saved to flash at the next reboot"
-			else
-				es_log "ES_CREDENTIALS FAIL: could not stage boot.img; a power cycle generates new credentials"
-			fi
+			rc=0
+			/usr/sbin/easystick-boot-commit /tmp/boot.img || rc=$?
+			case "$rc" in
+				0)
+					es_log "ES_CREDENTIALS: saved to flash"
+					md5sum /tmp/boot.img 2>/dev/null | cut -d' ' -f1 > /run/.boot-flash-md5 || true
+					;;
+				2) es_log "ES_CREDENTIALS: staged; saved to flash at the next reboot" ;;
+				*) es_log "ES_CREDENTIALS FAIL: could not stage boot.img; a power cycle generates new credentials" ;;
+			esac
 		fi
 	fi
+
+	# bootsync saves the drive when the host's writes change the image after
+	# this point (easystick-bootsync, SEEN_REF).
+	touch -r /tmp/boot.img /run/.bootsync-seen 2>/dev/null || true
 
 	# Start USB Mass Storage Gadget on Full-Speed DWC2 (Type-A port)
 	if [ -f /tmp/boot.img ]; then
