@@ -28,7 +28,7 @@ Boots out-of-the-box into **Wi-Fi SoftAP mode** with automatic DHCP, Dropbear SS
   - **SSH Server**: Password-enabled Dropbear on TCP port 22 (user `m5`, per-device password from `credentials.txt`). inetd accepts up to 20 new connections a minute, then stops listening for 60 s.
   - **`vi` Editor**: Full-featured BusyBox `vi` with search, undo, visual buffers, and syntax assistance.
   - **Shell commands**: the main BusyBox carries the shell and the commands scripts use (`grep`, `sed`, `find`, `ps`, `df`, `dmesg`, `ping`, `nc`, ...). The m3-lab image adds `busybox-tools`, a third BusyBox with about 65 everyday commands the main one leaves out to stay under the 512 KB NOMMU allocation: `awk`, `less`, `top`, `free`, `uptime`, `pgrep`/`pkill`, `watch`, `timeout`, `stat`, `diff`, `patch`, `hexdump`, `xxd`, `tar`, `gzip`, `unzip`, `wget` (HTTP only), `nslookup`, `traceroute`, `ip` and more. It is loaded only while one of them runs (about 430 KB of the user pool). `sudo`, `nano`, `curl`, `file`, `dig` and `lsblk` are not available: they need an MMU, a wide-character toolchain or more RAM than the board has. The SSH login message (`/etc/motd`) lists the common commands by group; `busybox --list` and `busybox-tools --list` print everything.
-  - **MicroPython (`python3`)**: MicroPython v1.22.2 compiled with bFLT Load-to-Ram (`-r`) and position-independent code (`-fPIC`) for stable NOMMU execution.
+  - **MicroPython (`python3`)**: MicroPython v1.22.2 compiled with bFLT Load-to-Ram (`-r`) and position-independent code (`-fPIC`) for stable NOMMU execution. It has the unix port's standard modules (`time`, `socket`, `select`, `json`, `re`, `struct`, `random`, `hashlib`, `binascii`, `collections`, `asyncio`, ...) without threads, TLS, `ffi`, `framebuf` or complex numbers, to stay under the 512 KB NOMMU allocation.
   - **Pico-style autorun**: `main.py`, `main.sh` or a bFLT `main` saved on the USB drive runs as `m5` at boot and restarts when a new version is saved ([details](#5-autorun-from-the-usb-drive-pico-style)).
   - **Writable Filesystem (OverlayFS)**: While the root filesystem is SquashFS (read-only for durability), RAM-backed OverlayFS is mounted on `/home`, `/root`, and `/var/lib` so users can create and edit scripts during the current boot. Its contents are lost when power is removed.
   - **USB Mass Storage (`/boot` drive, optional hardware)**: With the [optional EasyStick carrier](#optional-hardware-easystick-usb-mass-storage-carrier), its Type-A USB connection (GPIO26/27) exposes a FAT-formatted 256KB `/boot` configuration drive to Windows/Mac/Linux hosts. Save a file and, a few seconds later, the board validates the drive, applies the settings and writes it to redundant A/B flash slots. No eject or reboot is needed.
@@ -391,6 +391,16 @@ vi script.py
 
 The image comes pre-installed with **MicroPython v1.22.2** compiled specifically for RISC-V RV32 NOMMU architectures using bFLT Load-to-Ram (`-r`), position-independent code (`-fPIC`), and an expanded 32 KB execution stack.
 
+Available modules: `os`, `sys`, `time` (`sleep`, `sleep_ms`, `ticks_ms`, `localtime`), `socket`, `select`, `json`, `re`, `struct`, `random`, `math`, `hashlib`, `binascii`, `collections`, `array`, `io`, `errno`, `heapq`, `gc`, `platform`, `termios` and `asyncio`. Threads (`_thread`), TLS (`ssl`), `ffi`, `framebuf`, `cmath` and `deflate` are not built in. The kernel has no IPv6, so pick the IPv4 entry from `socket.getaddrinfo()`:
+
+```python
+import socket
+ai = [a for a in socket.getaddrinfo("example.com", 80, 0, socket.SOCK_STREAM)
+      if a[0] == socket.AF_INET][0]
+s = socket.socket(ai[0], ai[1], ai[2])
+s.connect(ai[-1])
+```
+
 It is accessible under both `micropython` and the standard `python3` command.
 
 ### 1. Interactive REPL (Read-Eval-Print Loop)
@@ -516,7 +526,8 @@ few seconds later, with no eject or reboot. The first of these runs:
 - To stop a program for good, delete or rename it on the drive and save.
 
 The drive holds 256 KB in total, so programs stay small. The MicroPython here
-is the Unix port: there is no `machine.Pin`. A program can use files, sockets
+is the Unix port: it has `time`, `socket`, `json`, `asyncio` and the other
+modules listed above, but no `machine.Pin` or other GPIO access. A program can use files, sockets
 and the other Linux interfaces that `m5` can use. A program that uses up the
 memory can also starve `sshd`; removing it from the drive recovers.
 

@@ -89,6 +89,13 @@ def main() -> None:
     # every program looked the same and a saved change never restarted it.
     assert "find -type" not in autorun and " -type " not in autorun
     assert "/usr/sbin/easystick-autorun" in read("linux/m3-lab/post-build.sh")
+    # main.py needs time, socket, json, ...: the "minimal" MicroPython had
+    # only os and sys.  The bigger build must still fit the 512 KB block.
+    mpy = read("linux/buildroot-external/package/micropython-nommu/micropython-nommu.mk")
+    assert "VARIANT=nommu" in mpy and "build-nommu/micropython" in mpy
+    variant = read("linux/buildroot-external/package/micropython-nommu/variant/mpconfigvariant.h")
+    assert "MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES" in variant
+    assert "mpy_bss_end + mpy_stack < 496 * 1024" in build
     # The login message must not tell users to eject and reboot any more.
     motd = read("linux/m3-lab/rootfs-overlay/etc/motd")
     assert "No eject or reboot is needed" in motd

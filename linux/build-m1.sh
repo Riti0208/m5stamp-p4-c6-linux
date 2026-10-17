@@ -2292,6 +2292,15 @@ if $ssh_profile; then
 			echo "m3-lab check failed: busybox-tools is ${tools_bytes} bytes" >&2
 			exit 1
 		}
+		# MicroPython (bFLT -r) is loaded whole into one allocation: text,
+		# data and bss (header bss_end) plus the stack must stay under the
+		# 512 KB block with room for the kernel's extras (#34).
+		read -r mpy_bss_end mpy_stack < <(od -An -tu4 --endian=big -j 20 -N 8 \
+			"${br_output}/target/usr/bin/micropython")
+		(( mpy_bss_end + mpy_stack < 496 * 1024 )) || {
+			echo "m3-lab check failed: micropython needs $((mpy_bss_end + mpy_stack)) bytes of RAM" >&2
+			exit 1
+		}
 		for link in usr/bin/awk usr/bin/less bin/tar usr/bin/wget usr/bin/top usr/bin/free usr/bin/chpst; do
 			[[ "$(readlink "${br_output}/target/${link}")" == *busybox-tools ]] || {
 				echo "m3-lab check failed: ${link} does not point at busybox-tools" >&2
