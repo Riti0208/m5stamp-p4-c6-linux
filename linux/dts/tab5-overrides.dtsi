@@ -130,6 +130,19 @@
 		gpio-controller;
 		#gpio-cells = <2>;
 		status = "okay";
+
+		/*
+		 * The backlight enable (GPIO22) must be a line this driver owns:
+		 * on every direction change (the bit-banged I2C toggles SDA each
+		 * poll) it writes ENABLE_W1TC with every line it does not drive
+		 * as an output, which turned off the output the boot shim set.
+		 */
+		lcd-backlight-hog {
+			gpio-hog;
+			gpios = <22 GPIO_ACTIVE_HIGH>;
+			output-high;
+			line-name = "lcd-backlight";
+		};
 	};
 };
 
