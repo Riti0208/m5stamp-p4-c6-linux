@@ -424,6 +424,17 @@ start() {
 			fi
 			echo "M3-lab: wlan0 did not associate ($sta_state)"
 			[ -x /usr/sbin/easystick-update-status ] && /usr/sbin/easystick-update-status "$sta_state" "none" "none" "none" "${sta_ssid:-none}" "sta" &
+			# wpa_supplicant keeps scanning, so the network may appear later
+			# (a phone hotspot, a router that boots after the board).  Keep a
+			# DHCP client waiting for that link; without -t/-n udhcpc retries
+			# forever and its hook updates the status file on a lease.
+			if command -v udhcpc >/dev/null 2>&1; then
+				# The hook sets the clock on that lease (sync_time's job).
+				srv=$(conf_get ntp_server "$CFG" "$NOSPACE")
+				echo "${srv:-pool.ntp.org}" > /run/.es-ntp-pending
+				udhcpc -f -i wlan0 -A 10 >/dev/null 2>&1 &
+				echo "M3-lab: DHCP client waits for a later association"
+			fi
 			return 0
 		fi
 		i=$((i + 1))

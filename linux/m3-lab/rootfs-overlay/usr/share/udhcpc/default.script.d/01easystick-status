@@ -26,6 +26,14 @@ case "$ACTION" in
 			done < "$_conf"
 		fi
 		[ -x /usr/sbin/easystick-update-status ] && /usr/sbin/easystick-update-status "CONNECTED" "$ip" "$subnet" "$router" "$_ssid" "sta"
+		# S40network leaves the NTP server here when the lease came after
+		# its association timeout, so the clock is set now instead.
+		_srv=""
+		read -r _srv < /run/.es-ntp-pending 2>/dev/null || true
+		if [ -n "$_srv" ]; then
+			rm -f /run/.es-ntp-pending
+			[ "$_srv" = none ] || ntpd -n -q -p "$_srv" >/dev/null 2>&1 &
+		fi
 		;;
 	deconfig|leasefail)
 		[ -x /usr/sbin/easystick-update-status ] && /usr/sbin/easystick-update-status "DISCONNECTED" "none" "none" "none" "none" "sta"
