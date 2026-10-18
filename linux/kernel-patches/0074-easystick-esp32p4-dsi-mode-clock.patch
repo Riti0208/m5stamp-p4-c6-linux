@@ -1,35 +1,167 @@
 From: EasyStick Tab5 port
-Subject: [PATCH] drm/esp32p4: DPI clock and blit for other panels (Tab5)
+Subject: [PATCH] drm/esp32p4: mode-derived DPI clock, direct scan-out (Tab5)
 
 The WHY2025 glue hardcodes its BONO panel: DPICLK_DIV_NUM=5 (which
 divides by 6: 40 MHz, not the 48 MHz its comment expects), a +21 HFP
 compensation for 48 MHz, and a blit that rotates by 90° and shifts by 16
 rows.  Compute the divider and the compensation from the mode as ESP-IDF
 does (div = round(240 MHz / clock), DIV_NUM = div - 1; hfp += round(real /
-expected * htotal) - htotal), and add "espressif,blit-direct" for panels
-scanned in their native orientation, such as the M5Stack Tab5's ST7123.
+expected * htotal) - htotal).
+
+"espressif,blit-direct" is for panels scanned in their native
+orientation, such as the M5Stack Tab5's 720x1280 ST7123.  GDMA then reads
+the DRM framebuffer itself and framebuffers get no dirty hook, so fbdev
+draws straight into it: one 1.8 MB buffer instead of the GEM buffer, the
+fbdev shadow and the rotated copy, which did not fit next to the NOMMU
+user pools (order-9 allocation failure, fbdev ret=-12).  With nothing
+reporting damage, a 40 ms work writes the CPU cache back to PSRAM.  An
+optional memory-region (shared-dma-pool) keeps the buffer out of the
+buddy allocator.
 
 diff --git a/drivers/gpu/drm/espressif/dw-mipi-dsi-esp32p4.c b/drivers/gpu/drm/espressif/dw-mipi-dsi-esp32p4.c
-index f067c4b5e..800367c43 100644
+index f067c4b5e..d8ff2a5e0 100644
 --- a/drivers/gpu/drm/espressif/dw-mipi-dsi-esp32p4.c
 +++ b/drivers/gpu/drm/espressif/dw-mipi-dsi-esp32p4.c
-@@ -435,6 +435,15 @@ struct esp32p4_dsi {
+@@ -28,6 +28,7 @@
+ #include <linux/io.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
++#include <linux/of_reserved_mem.h>
+ #include <linux/platform_device.h>
+ #include <linux/ratelimit.h>
+ #include <linux/regulator/consumer.h>
+@@ -435,6 +436,21 @@ struct esp32p4_dsi {
  	u32 hdisp_cache, vdisp_cache;
  	u32 hsw_cache, hbp_cache, hfp_cache;
  	u32 vsw_cache, vbp_cache, vfp_cache;
 +	u32 clock_cache;	/* mode->clock, kHz */
 +
 +	/*
-+	 * "espressif,blit-direct": copy the DRM framebuffer to the DPI buffer
-+	 * as is, for panels scanned in their native orientation (M5Stack
-+	 * Tab5).  Without it the blit applies the WHY2025 BONO panel's 90°
-+	 * rotation and 16-row shift.
++	 * "espressif,blit-direct": the panel is scanned in its native
++	 * orientation (M5Stack Tab5), so GDMA reads the DRM framebuffer
++	 * itself: no rotated copy, no fbdev shadow (framebuffers have no
++	 * dirty hook), one 720x1280 buffer instead of three.  fb_cpu then
++	 * borrows the GEM buffer, and flush_work writes the CPU cache back
++	 * to PSRAM periodically since nothing reports fbdev damage.
++	 * Without it the blit applies the WHY2025 BONO panel's 90° rotation
++	 * and 16-row shift into a buffer of its own.
 +	 */
 +	bool blit_direct;
++	bool fb_borrowed;
++	struct delayed_work flush_work;
  
  	/*
  	 * fbdev client setup deferred to a workqueue.
-@@ -1115,6 +1124,36 @@ static void esp32p4_dsi_fbdev_setup_work(struct work_struct *work)
+@@ -973,15 +989,30 @@ static int esp32p4_dsi_gdma_arm(struct esp32p4_dsi *dsi)
+ 	}
+ 	writel(BIT(0) | BIT(1), g + GDMA_CFG0);	/* dmac_en | int_en */
+ 
+-	/* Framebuffer — coherent allocation. On NOMMU RV32 this returns a
+-	 * directly-mapped buffer; phys == virt and we can stamp pixels into
+-	 * it then hand the same address to the DMA engine. */
+-	dsi->fb_cpu = dma_alloc_coherent(dev, fb_size, &dsi->fb_dma, GFP_KERNEL);
+-	if (!dsi->fb_cpu)
+-		return dev_err_probe(dev, -ENOMEM, "fb alloc (%zu bytes) failed\n", fb_size);
++	if (dsi->blit_direct && dsi->pipe.plane.state && dsi->pipe.plane.state->fb) {
++		struct drm_framebuffer *fb = dsi->pipe.plane.state->fb;
++		struct drm_gem_dma_object *obj =
++			to_drm_gem_dma_obj(drm_gem_fb_get_obj(fb, 0));
++
++		if (obj && obj->vaddr && fb->pitches[0] == hdisp * 2 &&
++		    obj->base.size >= fb_size) {
++			/* Scan out the GEM buffer itself. */
++			dsi->fb_cpu = obj->vaddr;
++			dsi->fb_dma = obj->dma_addr;
++			dsi->fb_borrowed = true;
++		}
++	}
++	if (!dsi->fb_borrowed) {
++		/* Framebuffer — coherent allocation. On NOMMU RV32 this returns
++		 * a directly-mapped buffer; phys == virt and we can stamp pixels
++		 * into it then hand the same address to the DMA engine. */
++		dsi->fb_cpu = dma_alloc_coherent(dev, fb_size, &dsi->fb_dma, GFP_KERNEL);
++		if (!dsi->fb_cpu)
++			return dev_err_probe(dev, -ENOMEM, "fb alloc (%zu bytes) failed\n", fb_size);
++		esp32p4_dsi_fill_test_pattern(dsi->fb_cpu, hdisp, vdisp);
++	}
+ 	dsi->fb_size = fb_size;
+ 
+-	esp32p4_dsi_fill_test_pattern(dsi->fb_cpu, hdisp, vdisp);
+ 	/* Push pixels from D-cache out to PSRAM so DMA sees them. */
+ 	esp32p4_dsi_psram_flush(dsi->fb_cpu, fb_size);
+ 
+@@ -990,8 +1021,10 @@ static int esp32p4_dsi_gdma_arm(struct esp32p4_dsi *dsi)
+ 	dsi->lli_cpu = dma_alloc_coherent(dev, sizeof(*dsi->lli_cpu),
+ 					  &dsi->lli_dma, GFP_KERNEL);
+ 	if (!dsi->lli_cpu) {
+-		dma_free_coherent(dev, fb_size, dsi->fb_cpu, dsi->fb_dma);
++		if (!dsi->fb_borrowed)
++			dma_free_coherent(dev, fb_size, dsi->fb_cpu, dsi->fb_dma);
+ 		dsi->fb_cpu = NULL;
++		dsi->fb_borrowed = false;
+ 		return dev_err_probe(dev, -ENOMEM, "lli alloc failed\n");
+ 	}
+ 	lli = dsi->lli_cpu;
+@@ -1079,13 +1112,42 @@ static int esp32p4_dsi_gdma_arm(struct esp32p4_dsi *dsi)
+ 	udelay(1000);
+ 
+ 	dsi->gdma_armed = true;
++	if (dsi->fb_borrowed)
++		schedule_delayed_work(&dsi->flush_work, 0);
+ 	return 0;
+ }
+ 
++/* Point the looping LLI at another scan-out buffer (direct mode). */
++static void esp32p4_dsi_gdma_retarget(struct esp32p4_dsi *dsi,
++				      void *vaddr, dma_addr_t dma)
++{
++	dsi->fb_cpu = vaddr;
++	dsi->fb_dma = dma;
++	dsi->lli_cpu->sar0 = (u32)dma;
++	esp32p4_dsi_psram_flush(dsi->lli_cpu, sizeof(*dsi->lli_cpu));
++}
++
++#define ESP32P4_DSI_FLUSH_MS	40
++
++static void esp32p4_dsi_flush_work(struct work_struct *work)
++{
++	struct esp32p4_dsi *dsi =
++		container_of(to_delayed_work(work), struct esp32p4_dsi,
++			     flush_work);
++
++	if (!dsi->gdma_armed || !dsi->fb_borrowed)
++		return;
++	esp32p4_dsi_psram_flush(dsi->fb_cpu, dsi->fb_size);
++	schedule_delayed_work(&dsi->flush_work,
++			      msecs_to_jiffies(ESP32P4_DSI_FLUSH_MS));
++}
++
+ static void esp32p4_dsi_gdma_release(struct esp32p4_dsi *dsi)
+ {
+ 	if (!dsi->gdma_armed)
+ 		return;
++	dsi->gdma_armed = false;
++	cancel_delayed_work_sync(&dsi->flush_work);
+ 	/* Disable channel: write 0 to ch_en bit, 1 to ch_en_we mask. */
+ 	writel((1u << (8 + 0)), dsi->gdma_regs + GDMA_CHEN0);
+ 	if (dsi->lli_cpu) {
+@@ -1093,12 +1155,11 @@ static void esp32p4_dsi_gdma_release(struct esp32p4_dsi *dsi)
+ 				  dsi->lli_cpu, dsi->lli_dma);
+ 		dsi->lli_cpu = NULL;
+ 	}
+-	if (dsi->fb_cpu) {
++	if (dsi->fb_cpu && !dsi->fb_borrowed)
+ 		dma_free_coherent(dsi->dev, dsi->fb_size,
+ 				  dsi->fb_cpu, dsi->fb_dma);
+-		dsi->fb_cpu = NULL;
+-	}
+-	dsi->gdma_armed = false;
++	dsi->fb_cpu = NULL;
++	dsi->fb_borrowed = false;
+ }
+ 
+ /* Forward decl: defined alongside pipe_update below. */
+@@ -1115,6 +1176,36 @@ static void esp32p4_dsi_fbdev_setup_work(struct work_struct *work)
  	drm_client_setup_with_fourcc(&dsi->drm, DRM_FORMAT_RGB565);
  }
  
@@ -66,7 +198,7 @@ index f067c4b5e..800367c43 100644
  static void esp32p4_dsi_dpi_enable_work(struct work_struct *work)
  {
  	struct esp32p4_dsi *dsi =
-@@ -1141,7 +1180,16 @@ static void esp32p4_dsi_dpi_enable_work(struct work_struct *work)
+@@ -1141,7 +1232,16 @@ static void esp32p4_dsi_dpi_enable_work(struct work_struct *work)
  	 * compensation for the buggy PLL_F240M/3 = 80 MHz path; once the
  	 * clock is corrected, only +21 is needed.
  	 */
@@ -84,7 +216,7 @@ index f067c4b5e..800367c43 100644
  	u32 htotal = hdisp + hsw + hbp + hfp_compensated;
  	u32 vtotal = vdisp + vsw + vbp + dsi->vfp_cache;
  	u32 raw_num = hdisp * vdisp / 4;
-@@ -1271,6 +1319,7 @@ static void esp32p4_dsi_pipe_enable(struct drm_simple_display_pipe *pipe,
+@@ -1271,6 +1371,7 @@ static void esp32p4_dsi_pipe_enable(struct drm_simple_display_pipe *pipe,
  	dsi->vsw_cache   = mode->vsync_end   - mode->vsync_start;
  	dsi->vbp_cache   = mode->vtotal      - mode->vsync_end;
  	dsi->vfp_cache   = mode->vsync_start - mode->vdisplay;
@@ -92,10 +224,18 @@ index f067c4b5e..800367c43 100644
  
  	/*
  	 * dpi_enable_work is armed from esp32p4_dsi_atomic_commit_tail()
-@@ -1357,6 +1406,13 @@ static bool esp32p4_dsi_blit_fb(struct esp32p4_dsi *dsi,
+@@ -1357,6 +1458,21 @@ static bool esp32p4_dsi_blit_fb(struct esp32p4_dsi *dsi,
  	src = (u16 *)src_obj->vaddr + src_y * src_stride_px;
  	dst = (u16 *)dsi->fb_cpu;
  
++	if (dsi->blit_direct && dsi->fb_borrowed) {
++		/* GDMA reads the framebuffer: follow a new fb or pan offset. */
++		if (src_obj->dma_addr + src_y * fb->pitches[0] != dsi->fb_dma)
++			esp32p4_dsi_gdma_retarget(dsi, src,
++				src_obj->dma_addr + src_y * fb->pitches[0]);
++		esp32p4_dsi_psram_flush(dsi->fb_cpu, dsi->fb_size);
++		return true;
++	}
 +	if (dsi->blit_direct) {
 +		for (r = 0; r < H; r++)
 +			memcpy(dst + r * W, src + r * src_stride_px, W * 2);
@@ -106,12 +246,42 @@ index f067c4b5e..800367c43 100644
  	/*
  	 * Bridge/DPI timing on this silicon shows pixels at panel_y =
  	 * (dst_col + 16) mod H — we measured this empirically with a
-@@ -1617,6 +1673,8 @@ static int esp32p4_dsi_probe(struct platform_device *pdev)
+@@ -1490,6 +1606,13 @@ static const struct drm_mode_config_funcs esp32p4_dsi_mode_config_funcs = {
+ 	.atomic_commit	= drm_atomic_helper_commit,
+ };
+ 
++/* blit-direct: no dirty hook, so fbdev draws straight into the GEM buffer. */
++static const struct drm_mode_config_funcs esp32p4_dsi_mode_config_funcs_direct = {
++	.fb_create	= drm_gem_fb_create,
++	.atomic_check	= drm_atomic_helper_check,
++	.atomic_commit	= drm_atomic_helper_commit,
++};
++
+ /*
+  * Runs the default commit-tail, then arms the DPI/VIDEO enable work for
+  * any CRTC that just went through an enabling modeset. By the time
+@@ -1551,7 +1674,9 @@ static int esp32p4_dsi_drm_init(struct esp32p4_dsi *dsi)
+ 	drm->mode_config.min_height = 0;
+ 	drm->mode_config.max_width  = 2048;
+ 	drm->mode_config.max_height = 2048;
+-	drm->mode_config.funcs      = &esp32p4_dsi_mode_config_funcs;
++	drm->mode_config.funcs      = dsi->blit_direct ?
++				      &esp32p4_dsi_mode_config_funcs_direct :
++				      &esp32p4_dsi_mode_config_funcs;
+ 	drm->mode_config.helper_private = &esp32p4_dsi_mode_config_helpers;
+ 
+ 	/*
+@@ -1617,6 +1742,13 @@ static int esp32p4_dsi_probe(struct platform_device *pdev)
  		return PTR_ERR(dsi);
  
  	dsi->dev = dev;
 +	dsi->blit_direct = of_property_read_bool(dev->of_node,
 +						 "espressif,blit-direct");
++	INIT_DELAYED_WORK(&dsi->flush_work, esp32p4_dsi_flush_work);
++	/* Optional dedicated pool for the framebuffer and descriptor. */
++	ret = of_reserved_mem_device_init(dev);
++	if (ret && ret != -ENODEV)
++		dev_warn(dev, "memory-region: %d, using system memory\n", ret);
  	platform_set_drvdata(pdev, dsi);
  	INIT_DELAYED_WORK(&dsi->dpi_enable_work, esp32p4_dsi_dpi_enable_work);
  	INIT_DELAYED_WORK(&dsi->fbdev_setup_work, esp32p4_dsi_fbdev_setup_work);

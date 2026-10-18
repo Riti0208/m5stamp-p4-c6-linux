@@ -37,6 +37,21 @@
 		clock-output-names = "dsi-pclk";
 	};
 
+	reserved-memory {
+		/*
+		 * Scan-out buffer (720x1280 RGB565, 1.8 MB, an order-9
+		 * allocation) and the GDMA descriptor page, kept out of the
+		 * buddy allocator, which rarely has 2 MB free in one piece
+		 * next to the NOMMU user pools.  Ends where the low user pool
+		 * (0x495af000) starts.
+		 */
+		display_pool: display-pool@4939f000 {
+			compatible = "shared-dma-pool";
+			reg = <0x4939f000 0x00210000>;
+			no-map;
+		};
+	};
+
 	chosen {
 		/*
 		 * Landscape console with the keyboard below the screen: fbcon
@@ -57,6 +72,14 @@
 		clock-names = "pclk";
 		/* The Tab5 panel is scanned in its native orientation. */
 		espressif,blit-direct;
+		/*
+		 * The ROM cache ops make devices non-coherent by default, and
+		 * NOMMU has no uncached remap, so dma_alloc_coherent() fails
+		 * ("coherent DMA allocations not supported").  The glue
+		 * flushes its scan-out buffer and GDMA descriptor itself.
+		 */
+		dma-coherent;
+		memory-region = <&display_pool>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 		status = "okay";
