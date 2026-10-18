@@ -5,9 +5,18 @@ ESP32-C6 on SDIO, so it runs this image with a different boot shim and a few
 DTS changes. `EASYSTICK_BOARD=tab5` selects them; the `tab5-build` workflow
 builds everything below.
 
-**Status: not yet run on hardware.** Stage 1 (this document) is headless:
+**Status: stage 1 boots on hardware (2026-10-18).** Stage 1 is headless:
 serial console on the USB-C port, Wi-Fi SoftAP and SSH. The display and the
 Tab5 Keyboard come later.
+
+Checked on one Tab5 (P4 rev v1.3, ST7123 panel/touch) with the `tab5-build`
+image of `1b9718c` (`m5stamp-p4-c6-linux-smp-v0.0.1-16mb.bin`, SHA-256
+`9ac02212397eac0bedf54e122210a4f451daf4e9a312292722829e7ae722e2ff`) after the
+C6 OTA below: `tab5-power: C6 power on (expander 0x44 id 0xa0, WLAN_PWR_EN)`,
+`Machine model: M5Stack Tab5`, `mmc0: new SDIO card at address 0001`,
+`ESP-Hosted Version: NG-1.0.6.0.1`, `wlan0` up as SoftAP on 192.168.4.1,
+Dropbear started, `[bootsync] ownership=no-udc`, root shell on the USB-C
+console. SSH over the SoftAP was not tried yet.
 
 ## What differs from the Stamp-P4
 
@@ -54,6 +63,12 @@ After that update the factory Tab5 firmware has no Wi-Fi until the C6 gets an
 ESP-Hosted-MCU slave image again (through the same OTA host built with that
 image, or the `C6_ISP` header).
 
+The OTA was run on 2026-10-18: the host sent `NG-1.0.6.0.1` (1040848 bytes)
+and logged `Partition OTA completed successfully`; firmware 1.4.1 has no
+activate call (`requires v2.6.0+`), and the C6 came up with the NG image on
+the next reset. The OTA host then loops (it speaks ESP-Hosted-MCU to an NG
+C6), so flash the Linux image right after it reports success.
+
 ## Flashing from macOS
 
 Use esptool 4.8.1 (`versions.lock.json`; 5.3.1 lost the USB-Serial/JTAG
@@ -72,7 +87,9 @@ cmp tab5-stock-1.bin tab5-stock-2.bin && shasum -a 256 tab5-stock-1.bin
 
 # 2. Update the C6: flash the OTA host, then watch it send the image.
 cd tab5-assets/ota-host
-$ESPTOOL --baud 460800 write_flash $(cat flash_args)
+$ESPTOOL --baud 460800 write_flash $(grep -v network_adapter flash_args)
+# esptool refuses a C6 image in a P4 write without --force
+$ESPTOOL --baud 460800 write_flash --force 0x5f0000 network_adapter.bin
 python3 -m serial.tools.miniterm "$PORT" 115200   # wait for the OTA to finish
 
 # 3. Flash the Linux image.
