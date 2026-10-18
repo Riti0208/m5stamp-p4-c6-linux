@@ -20,3 +20,72 @@
 &usb_otg11 {
 	status = "disabled";
 };
+
+/*
+ * ST7123 720x1280 panel on the P4 MIPI-DSI host, two lanes (WHY2025's DSI
+ * glue, kernel patches 0003/0073/0074; panel driver 0075).  The glue enables
+ * the DSI clocks and LDO3 (VDD_MIPI_DPHY 2.5 V) itself.  The boot shim
+ * releases LCD_RST (P4 of the 0x43 expander) and turns the backlight
+ * (GPIO22) on, since Linux has no driver for either.
+ */
+/ {
+	/* The DW-MIPI-DSI core needs a "pclk"; the APB clock is already on. */
+	dsi_pclk: dsi-pclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <100000000>;
+		clock-output-names = "dsi-pclk";
+	};
+
+	chosen {
+		/*
+		 * Landscape console with the keyboard below the screen: fbcon
+		 * rotates the 720x1280 panel, Terminus 16x32 gives 80x22.
+		 * console=ttyGS1 stays last, so /dev/console is still USB-C.
+		 */
+		bootargs = "earlycon=esp32p4usbjtag,mmio32,0x500d2000 console=tty0 console=ttyGS1,115200n8 loglevel=4 root=/dev/mtdblock0 rootfstype=squashfs ro init=/sbin/init maxcpus=1 fbcon=rotate:1 fbcon=font:TER16x32";
+	};
+};
+
+&soc {
+	dsi: dsi@500a0000 {
+		compatible = "espressif,esp32p4-mipi-dsi";
+		reg = <0x500a0000 0x0800>,	/* DW-MIPI-DSI host */
+		      <0x500a0800 0x0100>;	/* Espressif bridge */
+		reg-names = "host", "bridge";
+		clocks = <&dsi_pclk>;
+		clock-names = "pclk";
+		/* The Tab5 panel is scanned in its native orientation. */
+		espressif,blit-direct;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "okay";
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+			};
+
+			port@1 {
+				reg = <1>;
+				dsi_out: endpoint {
+					remote-endpoint = <&panel_in>;
+				};
+			};
+		};
+
+		panel@0 {
+			compatible = "sitronix,st7123";
+			reg = <0>;
+
+			port {
+				panel_in: endpoint {
+					remote-endpoint = <&dsi_out>;
+				};
+			};
+		};
+	};
+};

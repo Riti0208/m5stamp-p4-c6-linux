@@ -10,6 +10,10 @@
  * (SDA GPIO31, SCL GPIO32, 2.2 k pull-ups) and are reset with CHIP_PU, so
  * every cold boot starts with the C6 unpowered.
  *
+ * The same 0x43 expander drives LCD_RST on P4 (high = panel running), and
+ * GPIO22 enables the backlight boost converter; Linux has drivers for
+ * neither, so tab5_lcd_power_on() sets both before the handoff.
+ *
  * Nothing else here needs I2C, so the bus is bit-banged with open-drain GPIO
  * instead of pulling in the I2C driver; it is released (inputs) on return so
  * Linux and later drivers find the pins idle.  Only the expander bits named
@@ -41,6 +45,11 @@ static const char *TAG = "tab5-power";
 
 #define PI4IO_PWR_WLAN_PWR_EN (1u << 0)
 #define PI4IO_SYS_RF_PTH_EXT (1u << 0)
+#define PI4IO_SYS_LCD_RST (1u << 4)
+
+#define TAB5_LCD_BACKLIGHT GPIO_NUM_22
+#define LCD_RESET_ASSERT_US 10000u
+#define LCD_RESET_READY_US 120000u
 
 /* Settle time after the load switch turns on, before the reset sequence. */
 #define C6_POWER_SETTLE_US 50000u
@@ -222,5 +231,29 @@ bool tab5_c6_power_on(void)
 	esp_rom_delay_us(C6_POWER_SETTLE_US);
 	ESP_LOGI(TAG, "C6 power on (expander 0x%02x id 0x%02x, WLAN_PWR_EN)",
 		 PI4IO_ADDR_PWR, id);
+	return true;
+}
+
+bool tab5_lcd_power_on(void)
+{
+	bool ok;
+
+	i2c_bus_claim();
+	ok = pi4io_drive(PI4IO_ADDR_SYS, PI4IO_SYS_LCD_RST, false);
+	esp_rom_delay_us(LCD_RESET_ASSERT_US);
+	ok = ok && pi4io_drive(PI4IO_ADDR_SYS, PI4IO_SYS_LCD_RST, true);
+	i2c_bus_release();
+	if (!ok) {
+		ESP_LOGE(TAG, "LCD_RST write failed; the panel stays in reset");
+		return false;
+	}
+	esp_rom_delay_us(LCD_RESET_READY_US);
+
+	/* Linux keeps no GPIO22 state; leave the boost converter on. */
+	gpio_reset_pin(TAB5_LCD_BACKLIGHT);
+	gpio_set_direction(TAB5_LCD_BACKLIGHT, GPIO_MODE_OUTPUT);
+	gpio_set_level(TAB5_LCD_BACKLIGHT, 1);
+	ESP_LOGI(TAG, "LCD reset released (expander 0x%02x P4), backlight on",
+		 PI4IO_ADDR_SYS);
 	return true;
 }

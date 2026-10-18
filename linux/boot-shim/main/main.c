@@ -60,6 +60,9 @@
 #ifdef EASYSTICK_M2_SDIO
 #include "m2_sdmmc.h"
 #endif
+#ifdef EASYSTICK_BOARD_TAB5
+#include "tab5_power.h"
+#endif
 
 #include "hal/usb_wrap_ll.h"
 #include "soc/usb_wrap_struct.h"
@@ -733,6 +736,9 @@ void app_main(void)
 #ifndef EASYSTICK_BOARD_TAB5
 	/* Enable Full-Speed USB OTG (DWC2) for Type-A USB Gadget */
 	easystick_usb_otg_init();
+#else
+	/* The panel's DSI init runs in Linux; it only needs reset and light. */
+	tab5_lcd_power_on();
 #endif
 	const esp_partition_t *kernel = esp_partition_find_first(
 		ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "kernel");

@@ -855,6 +855,15 @@ if $network_profile; then
 	# CMD_DONE, arm the same timer from the write CMD_DONE IRQ instead.
 	patches+=(0061-easystick-dw-mmc-tx-dto-on-cmd-done.patch)
 fi
+# M5Stack Tab5 display: WHY2025's ESP32-P4 DSI glue (0003, read from the
+# locked reference), its commit-tail rework without the badge DTS hunk
+# (0073), mode-derived DPI clock and a direct blit (0074), ST7123 panel (0075).
+if [[ "${EASYSTICK_BOARD:-stamp-p4}" == tab5 ]]; then
+	patches+=(0003-drm-mipi-dsi-esp32p4.patch)
+	patches+=(0073-easystick-esp32p4-dsi-commit-tail.patch)
+	patches+=(0074-easystick-esp32p4-dsi-mode-clock.patch)
+	patches+=(0075-drm-panel-sitronix-st7123.patch)
+fi
 for patch_name in "${patches[@]}"; do
 	if [[ "$patch_name" == 0022-esp32p4-systimer-level-trigger.patch ||
 	      "$patch_name" == 0024-riscv-esp32p4-early-uart-marker.patch ||
@@ -887,6 +896,9 @@ for patch_name in "${patches[@]}"; do
 	      "$patch_name" == 0070-easystick-nommu-pool-multi-region.patch ||
 	      "$patch_name" == 0071-easystick-nommu-access-ok.patch ||
 	      "$patch_name" == 0072-easystick-esp32p4-bootflash.patch ||
+	      "$patch_name" == 0073-easystick-esp32p4-dsi-commit-tail.patch ||
+	      "$patch_name" == 0074-easystick-esp32p4-dsi-mode-clock.patch ||
+	      "$patch_name" == 0075-drm-panel-sitronix-st7123.patch ||
 	      "$patch_name" == 0056-easystick-wdt-stacktrace.patch ||
 	      "$patch_name" == 0055-easystick-sdio-clock-attest.patch ||
 	      "$patch_name" == 0060-easystick-dw-mmc-tx-software-dto.patch ||
@@ -1022,6 +1034,9 @@ if $network_profile; then
 fi
 if $lab_profile; then
 	cat "${firmware_root}/linux/m3-lab/kernel.config.fragment" >>"${kernel_config_fragment}"
+fi
+if [[ "${EASYSTICK_BOARD:-stamp-p4}" == tab5 ]]; then
+	cat "${firmware_root}/linux/tab5/kernel.config.fragment" >>"${kernel_config_fragment}"
 fi
 if [[ -n "$pstore_identity" ]]; then
 	cat >>"${kernel_config_fragment}" <<'EOF'

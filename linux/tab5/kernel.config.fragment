@@ -1,0 +1,29 @@
+# M5Stack Tab5 (EASYSTICK_BOARD=tab5): the ST7123 MIPI-DSI panel as a DRM
+# device with fbdev emulation, and a VT console on it (fbcon).  The DSI glue
+# is WHY2025's 0003 + 0073/0074; the panel driver is 0075.
+CONFIG_DRM=y
+CONFIG_DRM_ESP32P4=y
+CONFIG_DRM_PANEL=y
+CONFIG_DRM_PANEL_SITRONIX_ST7123=y
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_DRM_FBDEV_OVERALLOC=100
+CONFIG_FB=y
+CONFIG_FB_DEVICE=y
+
+# The base config leaves VT out for the headless Stamp-P4.  The Tab5
+# bootargs list console=tty0 before console=ttyGS1, so /dev/console stays on
+# the USB-C serial port.
+CONFIG_TTY=y
+CONFIG_VT=y
+CONFIG_VT_CONSOLE=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
+CONFIG_FRAMEBUFFER_CONSOLE_DETECT_PRIMARY=y
+CONFIG_FRAMEBUFFER_CONSOLE_ROTATION=y
+CONFIG_FONTS=y
+CONFIG_FONT_8x16=y
+CONFIG_FONT_TER16x32=y
+# CONFIG_LOGO is not set
+
+# Keyboard input lands on the VT (Tab5 Keyboard, next stage).
+CONFIG_INPUT=y
+CONFIG_INPUT_EVDEV=y

@@ -230,6 +230,13 @@ mkdir -p "${TARGET_DIR}/boot"
 	echo "build_date=$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y-%m-%dT%H:%M:%SZ)"
 } > "${TARGET_DIR}/etc/easystick-release"
 
+# M5Stack Tab5: a root shell on the display console (tty1), like the one on
+# the USB-C serial console.  The Stamp-P4 has no VT, so it gets no tty1 line.
+if [ "${EASYSTICK_BOARD:-stamp-p4}" = tab5 ]; then
+	grep -q '^tty1:' "${TARGET_DIR}/etc/inittab" ||
+		sed -i '/^ttyGS1::/a tty1::askfirst:-/bin/sh' "${TARGET_DIR}/etc/inittab"
+fi
+
 # No dangling symlinks (#28), except those into runtime filesystems.
 find "${TARGET_DIR}" -type l | while read -r link; do
 	t=$(readlink "${link}")

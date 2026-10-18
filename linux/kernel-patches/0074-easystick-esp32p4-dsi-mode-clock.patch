@@ -1,0 +1,117 @@
+From: EasyStick Tab5 port
+Subject: [PATCH] drm/esp32p4: DPI clock and blit for other panels (Tab5)
+
+The WHY2025 glue hardcodes its BONO panel: DPICLK_DIV_NUM=5 (which
+divides by 6: 40 MHz, not the 48 MHz its comment expects), a +21 HFP
+compensation for 48 MHz, and a blit that rotates by 90° and shifts by 16
+rows.  Compute the divider and the compensation from the mode as ESP-IDF
+does (div = round(240 MHz / clock), DIV_NUM = div - 1; hfp += round(real /
+expected * htotal) - htotal), and add "espressif,blit-direct" for panels
+scanned in their native orientation, such as the M5Stack Tab5's ST7123.
+
+diff --git a/drivers/gpu/drm/espressif/dw-mipi-dsi-esp32p4.c b/drivers/gpu/drm/espressif/dw-mipi-dsi-esp32p4.c
+index f067c4b5e..800367c43 100644
+--- a/drivers/gpu/drm/espressif/dw-mipi-dsi-esp32p4.c
++++ b/drivers/gpu/drm/espressif/dw-mipi-dsi-esp32p4.c
+@@ -435,6 +435,15 @@ struct esp32p4_dsi {
+ 	u32 hdisp_cache, vdisp_cache;
+ 	u32 hsw_cache, hbp_cache, hfp_cache;
+ 	u32 vsw_cache, vbp_cache, vfp_cache;
++	u32 clock_cache;	/* mode->clock, kHz */
++
++	/*
++	 * "espressif,blit-direct": copy the DRM framebuffer to the DPI buffer
++	 * as is, for panels scanned in their native orientation (M5Stack
++	 * Tab5).  Without it the blit applies the WHY2025 BONO panel's 90°
++	 * rotation and 16-row shift.
++	 */
++	bool blit_direct;
+ 
+ 	/*
+ 	 * fbdev client setup deferred to a workqueue.
+@@ -1115,6 +1124,36 @@ static void esp32p4_dsi_fbdev_setup_work(struct work_struct *work)
+ 	drm_client_setup_with_fourcc(&dsi->drm, DRM_FORMAT_RGB565);
+ }
+ 
++/* DPI clock source selected in clkrst_audit(). */
++#define ESP32P4_DSI_DPICLK_SRC_KHZ	240000u
++
++/*
++ * Set the DPI clock divider for the mode's pixel clock the way ESP-IDF
++ * does (mipi_dsi_hal_host_dpi_calculate_divider: div = round(src / dpi),
++ * DPICLK_DIV_NUM = div - 1) and return the real DPI clock in kHz.
++ */
++static u32 esp32p4_dsi_set_dpi_clock(struct esp32p4_dsi *dsi, u32 clock_khz)
++{
++	void __iomem *clkrst;
++	u32 div, ctrl03;
++
++	div = clamp_t(u32, DIV_ROUND_CLOSEST(ESP32P4_DSI_DPICLK_SRC_KHZ, clock_khz),
++		      1, 256);
++	clkrst = ioremap(ESP32P4_HP_SYS_CLKRST_BASE, ESP32P4_HP_SYS_CLKRST_SIZE);
++	if (clkrst) {
++		ctrl03 = readl(clkrst + HP_SYS_CLKRST_PERI_CLK_CTRL03);
++		ctrl03 &= ~(0xffu << DSI_DPICLK_DIV_NUM_SHIFT);
++		ctrl03 |= (div - 1) << DSI_DPICLK_DIV_NUM_SHIFT;
++		writel(ctrl03, clkrst + HP_SYS_CLKRST_PERI_CLK_CTRL03);
++		iounmap(clkrst);
++	} else {
++		dev_warn(dsi->dev, "DPI clock: ioremap failed, divider unchanged\n");
++	}
++	dev_info(dsi->dev, "DPI clock %u kHz for a %u kHz mode (divider %u)\n",
++		 ESP32P4_DSI_DPICLK_SRC_KHZ / div, clock_khz, div);
++	return ESP32P4_DSI_DPICLK_SRC_KHZ / div;
++}
++
+ static void esp32p4_dsi_dpi_enable_work(struct work_struct *work)
+ {
+ 	struct esp32p4_dsi *dsi =
+@@ -1141,7 +1180,16 @@ static void esp32p4_dsi_dpi_enable_work(struct work_struct *work)
+ 	 * compensation for the buggy PLL_F240M/3 = 80 MHz path; once the
+ 	 * clock is corrected, only +21 is needed.
+ 	 */
+-	u32 hfp_compensated = hfp + 21;
++	/*
++	 * ESP-IDF's bridge compensation (mipi_dsi_hal_host_dpi_set_horizontal_
++	 * timing): stretch HFP so the real DPI clock keeps the mode's line
++	 * rate, hfp += round(real / expected * htotal) - htotal.
++	 */
++	u32 clock = dsi->clock_cache ?: 47000;
++	u32 real_khz = esp32p4_dsi_set_dpi_clock(dsi, clock);
++	u32 htotal_mode = hdisp + hsw + hbp + hfp;
++	u32 hfp_compensated = hfp +
++		DIV_ROUND_CLOSEST(real_khz * htotal_mode, clock) - htotal_mode;
+ 	u32 htotal = hdisp + hsw + hbp + hfp_compensated;
+ 	u32 vtotal = vdisp + vsw + vbp + dsi->vfp_cache;
+ 	u32 raw_num = hdisp * vdisp / 4;
+@@ -1271,6 +1319,7 @@ static void esp32p4_dsi_pipe_enable(struct drm_simple_display_pipe *pipe,
+ 	dsi->vsw_cache   = mode->vsync_end   - mode->vsync_start;
+ 	dsi->vbp_cache   = mode->vtotal      - mode->vsync_end;
+ 	dsi->vfp_cache   = mode->vsync_start - mode->vdisplay;
++	dsi->clock_cache = mode->clock;
+ 
+ 	/*
+ 	 * dpi_enable_work is armed from esp32p4_dsi_atomic_commit_tail()
+@@ -1357,6 +1406,13 @@ static bool esp32p4_dsi_blit_fb(struct esp32p4_dsi *dsi,
+ 	src = (u16 *)src_obj->vaddr + src_y * src_stride_px;
+ 	dst = (u16 *)dsi->fb_cpu;
+ 
++	if (dsi->blit_direct) {
++		for (r = 0; r < H; r++)
++			memcpy(dst + r * W, src + r * src_stride_px, W * 2);
++		esp32p4_dsi_psram_flush(dsi->fb_cpu, dsi->fb_size);
++		return true;
++	}
++
+ 	/*
+ 	 * Bridge/DPI timing on this silicon shows pixels at panel_y =
+ 	 * (dst_col + 16) mod H — we measured this empirically with a
+@@ -1617,6 +1673,8 @@ static int esp32p4_dsi_probe(struct platform_device *pdev)
+ 		return PTR_ERR(dsi);
+ 
+ 	dsi->dev = dev;
++	dsi->blit_direct = of_property_read_bool(dev->of_node,
++						 "espressif,blit-direct");
+ 	platform_set_drvdata(pdev, dsi);
+ 	INIT_DELAYED_WORK(&dsi->dpi_enable_work, esp32p4_dsi_dpi_enable_work);
+ 	INIT_DELAYED_WORK(&dsi->fbdev_setup_work, esp32p4_dsi_fbdev_setup_work);

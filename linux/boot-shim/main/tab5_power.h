@@ -5,3 +5,6 @@
 
 /* Switch the Tab5's C6 supply on through the I2C IO expander. */
 bool tab5_c6_power_on(void);
+
+/* Release the panel reset and switch the backlight on. */
+bool tab5_lcd_power_on(void);
