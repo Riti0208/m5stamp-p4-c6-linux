@@ -23,11 +23,12 @@ Tab5 Keyboard come later.
 Sources: the [Tab5 schematic](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1132/Tab5_Schematics_PDF.pdf)
 and ESP-Hosted-MCU's `ESP32P4_TAB5_C6_BOARD` Kconfig option.
 
-The C6 EN polarity is unclear. The schematic shows GPIO15 → 1 k → EN with a
-10 k pull-up (low = reset), while ESP-Hosted-MCU's Tab5 option says it is
-active-low the other way round (high = reset) and was tested on hardware. The
-boot shim therefore drives EN low, then high, then releases it, so whichever
-level resets the C6 is applied once and the pull-up lets it run.
+The C6 EN is wired as the schematic shows: GPIO15 → 1 k → EN with a 10 k
+pull-up, low = reset. ESP-Hosted-MCU's Tab5 board option defaults to the
+opposite polarity; with it the C6 stays in reset (`send_op_cond (1) returned
+0x107`), and with an active-high reset it answers (checked 2026-10-18, see
+below). The boot shim drives EN low, then high, then releases it, so it
+works with either polarity, and the OTA host forces the active-high reset.
 
 There is no USB drive on the Tab5. Read the Wi-Fi and SSH credentials from
 the `ES_CREDENTIALS NEW` line on the serial console at the first boot.
@@ -36,6 +37,11 @@ the Tab5 an edit of `/boot/config.txt` is not saved to flash yet; stage 1
 runs with the defaults (SoftAP).
 
 ## C6 firmware
+
+Checked on 2026-10-18 with a read-only P4 probe (ESP-Hosted-MCU v2.13.0 host,
+active-high reset): the C6 identifies as `esp32c6`, reports ESP-Hosted-MCU
+firmware **1.4.1**, capabilities `0xd` (WLAN, BLE over SDIO) and no transport
+size, so the host warns `Version mismatch: Host [2.13.0] > Co-proc [0.0.0]`.
 
 The Linux driver needs ESP-Hosted-NG 1.0.6 on the C6. The Tab5 ships its C6
 with an ESP-Hosted-MCU slave, so the C6 has to be updated once. Like the

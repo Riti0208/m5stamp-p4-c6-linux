@@ -145,12 +145,12 @@ static void route_input(uint32_t signal, uint32_t gpio)
 #ifdef EASYSTICK_BOARD_TAB5
 /*
  * The Tab5 schematic wires GPIO15 through 1 k straight to the C6 EN (10 k
- * pull-up, 1 uF), i.e. low = reset.  ESP-Hosted-MCU's Tab5 board option
- * says the reset is active-low the other way round (high = reset) and was
- * tested on hardware, so a board revision may invert it.  Both agree that a
- * released line lets the C6 run (the EN pull-up), so pulse low, then high,
- * then release: whichever level is the reset level is applied once for
- * 10 ms and the C6 starts on release.  The C6 was also just powered on.
+ * pull-up, 1 uF), i.e. low = reset, and a Tab5 checked on 2026-10-18 agrees:
+ * ESP-Hosted-MCU answered over SDIO only with its reset set active-high.
+ * Its Tab5 board option defaults to the opposite polarity, so a board
+ * revision may differ.  A released line lets the C6 run either way (the EN
+ * pull-up), so pulse low, then high, then release: whichever level is the
+ * reset level is applied once for 10 ms and the C6 starts on release.
  */
 static void pulse_c6_reset(void)
 {

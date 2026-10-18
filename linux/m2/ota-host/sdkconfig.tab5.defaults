@@ -1,8 +1,13 @@
 # M5Stack Tab5 (EASYSTICK_BOARD=tab5): appended after sdkconfig.defaults.
 # ESP-Hosted-MCU's own Tab5 board option sets the Slot 1 pins (CLK 12,
-# CMD 13, DAT0..3 11/10/9/8) and the C6 reset (GPIO15 with the polarity it
-# was tested with), so the Stamp-AddOn pin overrides above are cleared.
-# The C6 supply is switched on by the tab5_c6_power component.
+# CMD 13, DAT0..3 11/10/9/8) and the C6 reset GPIO15, so the Stamp-AddOn pin
+# overrides above are cleared.  The C6 supply is switched on by the
+# tab5_c6_power component.
 CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
 # CONFIG_ESP_HOSTED_P4_DEV_BOARD_NONE is not set
 CONFIG_ESP32P4_TAB5_C6_BOARD=y
+# The board option defaults to an active-low reset, which ends with EN low
+# and keeps the C6 in reset (send_op_cond 0x107) on a Tab5 checked on
+# 2026-10-18.  GPIO15 drives EN through 1 k, as the schematic shows.
+CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_HIGH=y
+# CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_LOW is not set
