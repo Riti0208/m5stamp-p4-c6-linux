@@ -343,18 +343,28 @@ EOF
 		fi
 	fi
 
-	# bootsync saves the drive when the host's writes change the image after
-	# this point (easystick-bootsync, SEEN_REF).
-	touch -r /tmp/boot.img /run/.bootsync-seen 2>/dev/null || true
-
-	# Start USB Mass Storage Gadget on Full-Speed DWC2 (Type-A port).  The
-	# DWC2 driver is built in, so its UDC exists by now; a board without one
-	# (the Tab5) has no USB drive and its DWC2 registers are not clocked.
+	# The DWC2 driver is built in, so its UDC exists by now; a board without
+	# one (the Tab5) has no USB drive and its DWC2 registers are not clocked.
 	HAVE_UDC=0
 	for udc in /sys/class/udc/*; do
 		[ -e "$udc" ] && HAVE_UDC=1
 	done
-	[ "$HAVE_UDC" = 1 ] || es_log "ES_USB_GADGET SKIP: no USB device controller"
+	if [ "$HAVE_UDC" != 1 ]; then
+		es_log "ES_USB_GADGET SKIP: no USB device controller"
+		# No host to hand the image to: keep /boot mounted so it can be
+		# edited on the board; bootsync saves the edits.  Mount before
+		# SEEN_REF below, since a rw mount marks the FAT dirty.
+		if [ -f /tmp/boot.img ] &&
+			mount -t vfat -o loop,rw,sync,umask=0000 /tmp/boot.img /boot 2>/dev/null; then
+			es_log "ES_BOOT_FAT OK: /boot stays mounted (no USB drive)"
+		fi
+	fi
+
+	# bootsync saves the drive when the host's writes change the image after
+	# this point (easystick-bootsync, SEEN_REF).
+	touch -r /tmp/boot.img /run/.bootsync-seen 2>/dev/null || true
+
+	# Start USB Mass Storage Gadget on Full-Speed DWC2 (Type-A port).
 	if [ -f /tmp/boot.img ] && [ "$HAVE_UDC" = 1 ]; then
 		es_log "ES_USB_GADGET STARTING"
 		USB_SERIAL=$(tr -d : 2>/dev/null < /sys/class/net/wlan0/address || true)
