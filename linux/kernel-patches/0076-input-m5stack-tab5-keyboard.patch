@@ -3,7 +3,9 @@ Subject: [PATCH] Input: add M5Stack Tab5 Keyboard
 
 The Tab5 Keyboard (A164) reports USB HID (modifier, usage) pairs over
 I2C at 0x6d in its HID mode, per M5Stack's Tab5_Keyboard I2C protocol
-sheet.  Its INT line has no interrupt controller here, so poll the queue.
+sheet.  Register reads end the register write with STOP, as M5Stack's
+library does; with a repeated start it answers 0.  Its INT line has no
+interrupt controller here, so poll the queue.
 
 diff --git a/drivers/input/keyboard/Kconfig b/drivers/input/keyboard/Kconfig
 index 2ff4fef32..d722a5083 100644
@@ -37,10 +39,10 @@ index 2d906e14f..122b0e655 100644
  obj-$(CONFIG_KEYBOARD_MAX7360)		+= max7360-keypad.o
 diff --git a/drivers/input/keyboard/m5stack-tab5-kbd.c b/drivers/input/keyboard/m5stack-tab5-kbd.c
 new file mode 100644
-index 000000000..e2158bc63
+index 000000000..1fae7a8fa
 --- /dev/null
 +++ b/drivers/input/keyboard/m5stack-tab5-kbd.c
-@@ -0,0 +1,208 @@
+@@ -0,0 +1,223 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * M5Stack Tab5 Keyboard (A164): 70-key I2C keyboard at 0x6d.
@@ -54,6 +56,10 @@ index 000000000..e2158bc63
 + *
 + * The INT line goes to a GPIO without an interrupt controller in this
 + * kernel, so the queue is polled.
++ *
++ * Reads are a register write ending in STOP, then a separate read, as
++ * M5Stack's library does (readRegister with stop = true); with a repeated
++ * start the keyboard answers 0.
 + */
 +
 +#include <linux/bits.h>
@@ -103,6 +109,19 @@ index 000000000..e2158bc63
 +	u8 modifier;
 +	unsigned short pressed;	/* key code held down, 0 if none */
 +};
++
++static int tab5_kbd_read(struct i2c_client *client, u8 reg, u8 *buf, int len)
++{
++	int ret;
++
++	ret = i2c_master_send(client, &reg, 1);
++	if (ret != 1)
++		return ret < 0 ? ret : -EIO;
++	ret = i2c_master_recv(client, buf, len);
++	if (ret != len)
++		return ret < 0 ? ret : -EIO;
++	return 0;
++}
 +
 +static void tab5_kbd_set_modifier(struct tab5_kbd *kbd, u8 modifier)
 +{
@@ -154,17 +173,14 @@ index 000000000..e2158bc63
 +{
 +	struct tab5_kbd *kbd = input_get_drvdata(input);
 +	struct i2c_client *client = kbd->client;
-+	int count, i, ret;
-+	u8 ev[2];
++	u8 count, ev[2];
++	int i;
 +
-+	count = i2c_smbus_read_byte_data(client, TAB5_KBD_REG_EVENT_NUM);
-+	if (count <= 0)
++	if (tab5_kbd_read(client, TAB5_KBD_REG_EVENT_NUM, &count, 1) || !count)
 +		return;
-+	for (i = 0; i < min(count, TAB5_KBD_QUEUE_MAX); i++) {
-+		ret = i2c_smbus_read_i2c_block_data(client,
-+						    TAB5_KBD_REG_HID_EVENT,
-+						    sizeof(ev), ev);
-+		if (ret != sizeof(ev) || (ev[0] == 0xff && ev[1] == 0xff))
++	for (i = 0; i < min_t(int, count, TAB5_KBD_QUEUE_MAX); i++) {
++		if (tab5_kbd_read(client, TAB5_KBD_REG_HID_EVENT, ev, sizeof(ev)) ||
++		    (ev[0] == 0xff && ev[1] == 0xff))
 +			break;
 +		tab5_kbd_event(kbd, ev[0], ev[1]);
 +	}
@@ -176,11 +192,12 @@ index 000000000..e2158bc63
 +	struct input_dev *input;
 +	struct tab5_kbd *kbd;
 +	unsigned int i;
-+	int fw, ret;
++	u8 fw;
++	int ret;
 +
-+	fw = i2c_smbus_read_byte_data(client, TAB5_KBD_REG_FW_VERSION);
-+	if (fw < 0)
-+		return dev_err_probe(dev, fw, "no Tab5 Keyboard at 0x%02x\n",
++	ret = tab5_kbd_read(client, TAB5_KBD_REG_FW_VERSION, &fw, 1);
++	if (ret)
++		return dev_err_probe(dev, ret, "no Tab5 Keyboard at 0x%02x\n",
 +				     client->addr);
 +
 +	/* HID mode; switching also empties the queue and releases INT. */
@@ -221,7 +238,7 @@ index 000000000..e2158bc63
 +	ret = input_register_device(input);
 +	if (ret)
 +		return ret;
-+	dev_info(dev, "Tab5 Keyboard firmware %d, HID mode\n", fw);
++	dev_info(dev, "Tab5 Keyboard firmware %u, HID mode\n", fw);
 +	return 0;
 +}
 +
