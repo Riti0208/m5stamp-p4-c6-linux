@@ -3,6 +3,8 @@
 # reboot.  While the host owns the LUN, a change is imported once the host
 # has not written for SETTLE_SECONDS.  A SCSI eject (the empty LUN file
 # attribute) imports at once.  This daemon never forces an eject.
+# A board without a USB device controller (the Tab5) has no drive; there an
+# edit of /boot (boot.img, loop-mounted) is imported the same way.
 
 BOOT_IMG="/tmp/boot.img"
 LUN_CTL="/usr/sbin/easystick-usb-lun"
@@ -63,8 +65,9 @@ find_lun_file() {
 lun_state() {
 	[ -n "$LUN_FILE" ] && [ -f "$LUN_FILE" ] || find_lun_file
 	if [ -z "$LUN_FILE" ] && [ "$HAVE_UDC" = 0 ]; then
-		# No USB device controller (Tab5): there is no drive to watch, and
+		# No USB device controller (Tab5): no drive and no LUN to ask, and
 		# exec'ing $LUN_CTL every second would only report that again.
+		# Edits of /boot are imported like a host's writes.
 		LUN_STATE="no-udc"
 		return
 	fi
@@ -326,7 +329,7 @@ while true; do
 		device-owned)
 			IMPORT_MODE=eject
 			;;
-		host-owned)
+		host-owned|no-udc)
 			if [ "$BOOT_IMG" -nt "$SEEN_REF" ]; then
 				touch -r "$BOOT_IMG" "$SEEN_REF"
 				PENDING=1
