@@ -65,6 +65,22 @@ jobs:
             --boot-image "$RUNNER_TEMP/out/buildroot/images/boot.img" \
             --output tab5 --version "$VERSION"
           cat tab5/SHA256SUMS.txt
+      # The patched kernel tree as Buildroot built it (patches plus the
+      # rendered C68 edits), cleaned, with its .config: tools/tab5-kernel-build.sh
+      # rebuilds Image from it in minutes for display/keyboard work.
+      - name: Package kernel kit
+        run: |
+          k="$RUNNER_TEMP/out/buildroot/build/linux-custom"
+          mkdir -p "$RUNNER_TEMP/kit"
+          cp "$k/.config" "$RUNNER_TEMP/kit/kernel.config"
+          make -C "$k" ARCH=riscv mrproper >/dev/null
+          tar -C "$(dirname "$k")" --zstd -cf "$RUNNER_TEMP/kit/linux-tree.tar.zst" "$(basename "$k")"
+          ls -l "$RUNNER_TEMP/kit"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tab5-kernel-kit
+          path: ${{ runner.temp }}/kit/
+          compression-level: 0
       - name: Build C6 ESP-Hosted-NG firmware
         run: |
           export IDF_TOOLS_PATH=$RUNNER_TEMP/idf-tools IDF_PATH=$PWD/vendor/esp-idf
