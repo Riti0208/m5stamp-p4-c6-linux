@@ -4,7 +4,12 @@
 #  - the temporary P4 OTA host that writes that firmware to the Tab5's C6.
 # The release workflow (release.yml) stays Stamp-P4 only.
 name: tab5-build
+# A push to the tab5 branch builds with the defaults below; workflow_dispatch
+# works once this file is on the default branch.
 on:
+  push:
+    branches: [tab5]
+    paths-ignore: ['**.md', 'docs/**']
   workflow_dispatch:
     inputs:
       version:
@@ -23,6 +28,8 @@ jobs:
     timeout-minutes: 360
     env:
       EASYSTICK_BOARD: tab5
+      VERSION: ${{ github.event.inputs.version || 'v0.0.1-tab5' }}
+      ESP_HOSTED_MCU_REF: ${{ github.event.inputs.esp_hosted_mcu_ref || 'v2.13.0' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,7 +59,6 @@ jobs:
           bash linux/build-c68.sh --vendor "$RUNNER_TEMP/out" --profile m3-lab
       - name: Package Linux image
         run: |
-          VERSION=${{ github.event.inputs.version }}
           VERSION=${VERSION%%-*}
           python3 linux/tools/package-release.py \
             --build-output "$RUNNER_TEMP/out" \
@@ -74,7 +80,7 @@ jobs:
           src="$RUNNER_TEMP/ota-src"
           mkdir -p "$src"
           ln -s "$IDF_PATH" "$src/esp_idf"
-          git clone --depth 1 --branch "${{ github.event.inputs.esp_hosted_mcu_ref }}" \
+          git clone --depth 1 --branch "$ESP_HOSTED_MCU_REF" \
             --recurse-submodules --shallow-submodules \
             https://github.com/espressif/esp-hosted-mcu.git "$src/esp_hosted_mcu"
           bash linux/m2/build-ota-host.sh "$src" tab5/c6/network_adapter.bin "$RUNNER_TEMP/ota"
