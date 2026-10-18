@@ -47,7 +47,7 @@ file_changed() {
 # attribute cannot be located (it also reports why).
 HAVE_UDC=0
 for udc in "${EASYSTICK_SYS_CLASS_UDC_ROOT:-/sys/class/udc}"/*; do
-	[ -e "$udc" ] && HAVE_UDC=1
+	if [ -e "$udc" ]; then HAVE_UDC=1; fi
 done
 
 LUN_FILE=""

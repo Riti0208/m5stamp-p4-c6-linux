@@ -347,7 +347,9 @@ EOF
 	# one (the Tab5) has no USB drive and its DWC2 registers are not clocked.
 	HAVE_UDC=0
 	for udc in /sys/class/udc/*; do
-		[ -e "$udc" ] && HAVE_UDC=1
+		# An if, not &&: under set -e a false test ends the loop's status
+		# non-zero and the script with it.
+		if [ -e "$udc" ]; then HAVE_UDC=1; fi
 	done
 	if [ "$HAVE_UDC" != 1 ]; then
 		es_log "ES_USB_GADGET SKIP: no USB device controller"
