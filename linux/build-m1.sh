@@ -857,12 +857,14 @@ if $network_profile; then
 fi
 # M5Stack Tab5 display: WHY2025's ESP32-P4 DSI glue (0003, read from the
 # locked reference), its commit-tail rework without the badge DTS hunk
-# (0073), mode-derived DPI clock and a direct blit (0074), ST7123 panel (0075).
+# (0073), mode-derived DPI clock and a direct blit (0074), ST7123 panel (0075);
+# Tab5 Keyboard (0076).
 if [[ "${EASYSTICK_BOARD:-stamp-p4}" == tab5 ]]; then
 	patches+=(0003-drm-mipi-dsi-esp32p4.patch)
 	patches+=(0073-easystick-esp32p4-dsi-commit-tail.patch)
 	patches+=(0074-easystick-esp32p4-dsi-mode-clock.patch)
 	patches+=(0075-drm-panel-sitronix-st7123.patch)
+	patches+=(0076-input-m5stack-tab5-keyboard.patch)
 fi
 for patch_name in "${patches[@]}"; do
 	if [[ "$patch_name" == 0022-esp32p4-systimer-level-trigger.patch ||
@@ -899,6 +901,7 @@ for patch_name in "${patches[@]}"; do
 	      "$patch_name" == 0073-easystick-esp32p4-dsi-commit-tail.patch ||
 	      "$patch_name" == 0074-easystick-esp32p4-dsi-mode-clock.patch ||
 	      "$patch_name" == 0075-drm-panel-sitronix-st7123.patch ||
+	      "$patch_name" == 0076-input-m5stack-tab5-keyboard.patch ||
 	      "$patch_name" == 0056-easystick-wdt-stacktrace.patch ||
 	      "$patch_name" == 0055-easystick-sdio-clock-attest.patch ||
 	      "$patch_name" == 0060-easystick-dw-mmc-tx-software-dto.patch ||

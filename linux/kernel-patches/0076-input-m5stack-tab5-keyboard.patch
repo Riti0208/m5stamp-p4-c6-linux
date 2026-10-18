@@ -1,0 +1,251 @@
+From: EasyStick Tab5 port
+Subject: [PATCH] Input: add M5Stack Tab5 Keyboard
+
+The Tab5 Keyboard (A164) reports USB HID (modifier, usage) pairs over
+I2C at 0x6d in its HID mode, per M5Stack's Tab5_Keyboard I2C protocol
+sheet.  Its INT line has no interrupt controller here, so poll the queue.
+
+diff --git a/drivers/input/keyboard/Kconfig b/drivers/input/keyboard/Kconfig
+index 2ff4fef32..d722a5083 100644
+--- a/drivers/input/keyboard/Kconfig
++++ b/drivers/input/keyboard/Kconfig
+@@ -279,6 +279,13 @@ config KEYBOARD_TCA8418
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called tca8418_keypad.
+ 
++config KEYBOARD_M5STACK_TAB5
++	tristate "M5Stack Tab5 Keyboard"
++	depends on I2C
++	help
++	  Say Y here to enable the M5Stack Tab5 Keyboard (A164), a 70-key
++	  keyboard read over I2C in its HID mode.
++
+ config KEYBOARD_MATRIX
+ 	tristate "GPIO driven matrix keypad support"
+ 	depends on GPIOLIB || COMPILE_TEST
+diff --git a/drivers/input/keyboard/Makefile b/drivers/input/keyboard/Makefile
+index 2d906e14f..122b0e655 100644
+--- a/drivers/input/keyboard/Makefile
++++ b/drivers/input/keyboard/Makefile
+@@ -39,6 +39,7 @@ obj-$(CONFIG_KEYBOARD_LM8333)		+= lm8333.o
+ obj-$(CONFIG_KEYBOARD_LOCOMO)		+= locomokbd.o
+ obj-$(CONFIG_KEYBOARD_LPC32XX)		+= lpc32xx-keys.o
+ obj-$(CONFIG_KEYBOARD_MAPLE)		+= maple_keyb.o
++obj-$(CONFIG_KEYBOARD_M5STACK_TAB5)	+= m5stack-tab5-kbd.o
+ obj-$(CONFIG_KEYBOARD_MATRIX)		+= matrix_keypad.o
+ obj-$(CONFIG_KEYBOARD_MAX7359)		+= max7359_keypad.o
+ obj-$(CONFIG_KEYBOARD_MAX7360)		+= max7360-keypad.o
+diff --git a/drivers/input/keyboard/m5stack-tab5-kbd.c b/drivers/input/keyboard/m5stack-tab5-kbd.c
+new file mode 100644
+index 000000000..e2158bc63
+--- /dev/null
++++ b/drivers/input/keyboard/m5stack-tab5-kbd.c
+@@ -0,0 +1,208 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * M5Stack Tab5 Keyboard (A164): 70-key I2C keyboard at 0x6d.
++ *
++ * Its STM32 scans the matrix and, in HID mode (register 0x10 = 1), queues
++ * one (modifier, usage) pair per key press and (modifier, 0) per release
++ * in register 0x30; register 0x02 holds the queue length.  The firmware
++ * applies the Sym and Aa layers itself and folds Ctrl/Alt into the
++ * modifier byte, so the pairs are what a USB keyboard would report.  The
++ * protocol is M5Stack's "Tab5_Keyboard-I2C-Protocol" sheet.
++ *
++ * The INT line goes to a GPIO without an interrupt controller in this
++ * kernel, so the queue is polled.
++ */
++
++#include <linux/bits.h>
++#include <linux/i2c.h>
++#include <linux/input.h>
++#include <linux/mod_devicetable.h>
++#include <linux/module.h>
++
++#define TAB5_KBD_REG_INT_STAT	0x01
++#define TAB5_KBD_REG_EVENT_NUM	0x02
++#define TAB5_KBD_REG_MODE	0x10
++#define TAB5_KBD_REG_HID_EVENT	0x30
++#define TAB5_KBD_REG_FW_VERSION	0xf0
++
++#define TAB5_KBD_MODE_HID	1
++#define TAB5_KBD_QUEUE_MAX	32
++#define TAB5_KBD_POLL_MS	25
++
++/* HID usage 0x00..0x65 to Linux key codes (a subset of hid-input.c). */
++static const unsigned short tab5_kbd_usage[0x66] = {
++	0, 0, 0, 0, KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G, KEY_H,
++	KEY_I, KEY_J, KEY_K, KEY_L, KEY_M, KEY_N, KEY_O, KEY_P, KEY_Q, KEY_R,
++	KEY_S, KEY_T, KEY_U, KEY_V, KEY_W, KEY_X, KEY_Y, KEY_Z,
++	KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0,
++	KEY_ENTER, KEY_ESC, KEY_BACKSPACE, KEY_TAB, KEY_SPACE, KEY_MINUS,
++	KEY_EQUAL, KEY_LEFTBRACE, KEY_RIGHTBRACE, KEY_BACKSLASH, KEY_BACKSLASH,
++	KEY_SEMICOLON, KEY_APOSTROPHE, KEY_GRAVE, KEY_COMMA, KEY_DOT,
++	KEY_SLASH, KEY_CAPSLOCK,
++	KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8,
++	KEY_F9, KEY_F10, KEY_F11, KEY_F12, KEY_SYSRQ, KEY_SCROLLLOCK,
++	KEY_PAUSE, KEY_INSERT, KEY_HOME, KEY_PAGEUP, KEY_DELETE, KEY_END,
++	KEY_PAGEDOWN, KEY_RIGHT, KEY_LEFT, KEY_DOWN, KEY_UP,
++	KEY_NUMLOCK, KEY_KPSLASH, KEY_KPASTERISK, KEY_KPMINUS, KEY_KPPLUS,
++	KEY_KPENTER, KEY_KP1, KEY_KP2, KEY_KP3, KEY_KP4, KEY_KP5, KEY_KP6,
++	KEY_KP7, KEY_KP8, KEY_KP9, KEY_KP0, KEY_KPDOT, KEY_102ND, KEY_COMPOSE,
++};
++
++/* HID modifier byte, bit 0..7. */
++static const unsigned short tab5_kbd_modifier[8] = {
++	KEY_LEFTCTRL, KEY_LEFTSHIFT, KEY_LEFTALT, KEY_LEFTMETA,
++	KEY_RIGHTCTRL, KEY_RIGHTSHIFT, KEY_RIGHTALT, KEY_RIGHTMETA,
++};
++
++struct tab5_kbd {
++	struct i2c_client *client;
++	struct input_dev *input;
++	u8 modifier;
++	unsigned short pressed;	/* key code held down, 0 if none */
++};
++
++static void tab5_kbd_set_modifier(struct tab5_kbd *kbd, u8 modifier)
++{
++	u8 changed = kbd->modifier ^ modifier;
++	unsigned int bit;
++
++	for (bit = 0; bit < 8; bit++)
++		if (changed & BIT(bit))
++			input_report_key(kbd->input, tab5_kbd_modifier[bit],
++					 !!(modifier & BIT(bit)));
++	kbd->modifier = modifier;
++}
++
++static void tab5_kbd_event(struct tab5_kbd *kbd, u8 modifier, u8 usage)
++{
++	struct input_dev *input = kbd->input;
++
++	if (usage == 0) {
++		/*
++		 * A release carries no usage.  Presses arrive one key at a
++		 * time, so it ends the key held down.  The modifier stays
++		 * until the next press: the firmware sends no event when Ctrl
++		 * or Alt alone is released, and Shift added for a symbol must
++		 * outlast that symbol's key.
++		 */
++		if (kbd->pressed) {
++			input_report_key(input, kbd->pressed, 0);
++			kbd->pressed = 0;
++		}
++		input_sync(input);
++		return;
++	}
++
++	if (kbd->pressed) {
++		input_report_key(input, kbd->pressed, 0);
++		kbd->pressed = 0;
++	}
++	tab5_kbd_set_modifier(kbd, modifier);
++	if (usage < ARRAY_SIZE(tab5_kbd_usage) && tab5_kbd_usage[usage]) {
++		kbd->pressed = tab5_kbd_usage[usage];
++		input_report_key(input, kbd->pressed, 1);
++	} else {
++		dev_dbg(&kbd->client->dev, "unmapped HID usage 0x%02x\n", usage);
++	}
++	input_sync(input);
++}
++
++static void tab5_kbd_poll(struct input_dev *input)
++{
++	struct tab5_kbd *kbd = input_get_drvdata(input);
++	struct i2c_client *client = kbd->client;
++	int count, i, ret;
++	u8 ev[2];
++
++	count = i2c_smbus_read_byte_data(client, TAB5_KBD_REG_EVENT_NUM);
++	if (count <= 0)
++		return;
++	for (i = 0; i < min(count, TAB5_KBD_QUEUE_MAX); i++) {
++		ret = i2c_smbus_read_i2c_block_data(client,
++						    TAB5_KBD_REG_HID_EVENT,
++						    sizeof(ev), ev);
++		if (ret != sizeof(ev) || (ev[0] == 0xff && ev[1] == 0xff))
++			break;
++		tab5_kbd_event(kbd, ev[0], ev[1]);
++	}
++}
++
++static int tab5_kbd_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	struct input_dev *input;
++	struct tab5_kbd *kbd;
++	unsigned int i;
++	int fw, ret;
++
++	fw = i2c_smbus_read_byte_data(client, TAB5_KBD_REG_FW_VERSION);
++	if (fw < 0)
++		return dev_err_probe(dev, fw, "no Tab5 Keyboard at 0x%02x\n",
++				     client->addr);
++
++	/* HID mode; switching also empties the queue and releases INT. */
++	ret = i2c_smbus_write_byte_data(client, TAB5_KBD_REG_MODE,
++					TAB5_KBD_MODE_HID);
++	if (ret)
++		return dev_err_probe(dev, ret, "cannot select HID mode\n");
++	i2c_smbus_write_byte_data(client, TAB5_KBD_REG_EVENT_NUM, 0);
++	i2c_smbus_write_byte_data(client, TAB5_KBD_REG_INT_STAT, 0);
++
++	kbd = devm_kzalloc(dev, sizeof(*kbd), GFP_KERNEL);
++	if (!kbd)
++		return -ENOMEM;
++	input = devm_input_allocate_device(dev);
++	if (!input)
++		return -ENOMEM;
++
++	kbd->client = client;
++	kbd->input = input;
++	input->name = "M5Stack Tab5 Keyboard";
++	input->phys = "tab5-kbd/input0";
++	input->id.bustype = BUS_I2C;
++	input_set_drvdata(input, kbd);
++
++	__set_bit(EV_KEY, input->evbit);
++	__set_bit(EV_REP, input->evbit);
++	for (i = 0; i < ARRAY_SIZE(tab5_kbd_usage); i++)
++		if (tab5_kbd_usage[i])
++			__set_bit(tab5_kbd_usage[i], input->keybit);
++	for (i = 0; i < ARRAY_SIZE(tab5_kbd_modifier); i++)
++		__set_bit(tab5_kbd_modifier[i], input->keybit);
++
++	ret = input_setup_polling(input, tab5_kbd_poll);
++	if (ret)
++		return ret;
++	input_set_poll_interval(input, TAB5_KBD_POLL_MS);
++
++	ret = input_register_device(input);
++	if (ret)
++		return ret;
++	dev_info(dev, "Tab5 Keyboard firmware %d, HID mode\n", fw);
++	return 0;
++}
++
++static const struct of_device_id tab5_kbd_of_match[] = {
++	{ .compatible = "m5stack,tab5-keyboard" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, tab5_kbd_of_match);
++
++static const struct i2c_device_id tab5_kbd_id[] = {
++	{ "tab5-keyboard" },
++	{ }
++};
++MODULE_DEVICE_TABLE(i2c, tab5_kbd_id);
++
++static struct i2c_driver tab5_kbd_driver = {
++	.driver = {
++		.name = "m5stack-tab5-kbd",
++		.of_match_table = tab5_kbd_of_match,
++	},
++	.probe = tab5_kbd_probe,
++	.id_table = tab5_kbd_id,
++};
++module_i2c_driver(tab5_kbd_driver);
++
++MODULE_DESCRIPTION("M5Stack Tab5 Keyboard driver");
++MODULE_LICENSE("GPL");

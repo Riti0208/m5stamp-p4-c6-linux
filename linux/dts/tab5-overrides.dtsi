@@ -89,3 +89,39 @@
 		};
 	};
 };
+
+#include <dt-bindings/gpio/gpio.h>
+
+/*
+ * Tab5 Keyboard (A164) on Ext.Port1: SDA GPIO0, SCL GPIO1, I2C 0x6d
+ * (kernel patch 0076).  Bank 0 of the P4 GPIO controller (WHY2025's 0002
+ * driver; it shares the MMIO page with gpio1) carries both lines; the bus is
+ * bit-banged like WHY2025's keypad bus.  The keyboard's INT (GPIO50) is not
+ * used: the driver polls.
+ */
+&soc {
+	gpio0: gpio@500e0000 {
+		compatible = "espressif,esp32p4-gpio";
+		reg = <0x500e0000 0x1000>;
+		espressif,bank-id = <0>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		status = "okay";
+	};
+};
+
+/ {
+	i2c_ext: i2c-ext {
+		compatible = "i2c-gpio";
+		sda-gpios = <&gpio0 0 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN | GPIO_PULL_UP)>;
+		scl-gpios = <&gpio0 1 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN | GPIO_PULL_UP)>;
+		i2c-gpio,delay-us = <5>;	/* about 100 kHz */
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		keyboard@6d {
+			compatible = "m5stack,tab5-keyboard";
+			reg = <0x6d>;
+		};
+	};
+};

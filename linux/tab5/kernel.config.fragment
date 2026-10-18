@@ -24,6 +24,11 @@ CONFIG_FONT_8x16=y
 CONFIG_FONT_TER16x32=y
 # CONFIG_LOGO is not set
 
-# Keyboard input lands on the VT (Tab5 Keyboard, next stage).
+# Tab5 Keyboard (0076) on a bit-banged I2C bus (GPIO0/1, Ext.Port1); its
+# keys land on the VT.
 CONFIG_INPUT=y
 CONFIG_INPUT_EVDEV=y
+CONFIG_INPUT_KEYBOARD=y
+CONFIG_KEYBOARD_M5STACK_TAB5=y
+CONFIG_I2C=y
+CONFIG_I2C_GPIO=y
