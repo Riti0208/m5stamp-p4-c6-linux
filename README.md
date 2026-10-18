@@ -24,9 +24,9 @@ documentation follows below.  Details of the port are in
 | Shell | root shell on the display (tty1) and on the USB-C serial console; Dropbear SSH as user `m5` |
 | Userland | BusyBox (vi, awk, wget, ...), MicroPython (`python3`), NTP clock |
 
-Not yet: the ILI9881C and ST7121 panel revisions (only ST7123 is
-supported), touch, audio, camera, the USB-A host port, battery and power
-button handling, and the second CPU core.
+Not supported: the ILI9881C and ST7121 panel revisions (only ST7123),
+touch, audio, camera, the USB-A host port, battery and power button
+handling, and the second CPU core.
 
 ## Installing on a Tab5
 

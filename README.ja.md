@@ -16,7 +16,7 @@
 | シェル | 画面（tty1）と USB-C のシリアルで root シェル。SSH はユーザー `m5` で入れる（Dropbear） |
 | ユーザーランド | BusyBox（vi、awk、wget など）、MicroPython（`python3`）、NTP による時刻合わせ |
 
-まだ動かないもの：
+対応していないもの：
 
 - ST7123 以外のパネル（ILI9881C、ST7121 の版）
 - タッチ、音声、カメラ
