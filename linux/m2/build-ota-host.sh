@@ -9,6 +9,10 @@ Builds a disposable ESP-IDF ESP32-P4 host that uses ESP-Hosted-MCU over the
 Stamp-AddOn C6 SDIO link to update the C6 firmware partition. It never flashes
 the P4 or C6. The ESP-Hosted-MCU source is copied from the external cache; no
 third-party source is vendored into this repository.
+
+Set EASYSTICK_BOARD=tab5 for the M5Stack Tab5: the host uses ESP-Hosted-MCU's
+Tab5 board option (needs an esp-hosted-mcu checkout that has it, e.g. v2.13.0)
+and switches the C6 supply on through the Tab5 IO expander first.
 EOF
 }
 
@@ -33,6 +37,28 @@ mkdir -p -- "${output}/project/components"
 cp -a "${host_source}/examples/host_performs_slave_ota/." "${output}/project/"
 cp -a "${host_source}/." "${output}/project/components/esp_hosted/"
 cp -- "${script_dir}/ota-host/sdkconfig.defaults" "${output}/project/sdkconfig.defaults"
+case "${EASYSTICK_BOARD:-stamp-p4}" in
+	stamp-p4) ;;
+	tab5)
+		grep -q 'config ESP32P4_TAB5_C6_BOARD' "${host_source}/Kconfig" || {
+			echo "this esp-hosted-mcu checkout has no Tab5 board option" >&2
+			exit 1
+		}
+		# Drop the Stamp-AddOn pin overrides; the Tab5 board option sets them.
+		grep -v -e '_SDIO_PIN_' -e 'GPIO_RESET_SLAVE' -e 'P4_DEV_BOARD_NONE' \
+			"${script_dir}/ota-host/sdkconfig.defaults" \
+			>"${output}/project/sdkconfig.defaults"
+		cat -- "${script_dir}/ota-host/sdkconfig.tab5.defaults" \
+			>>"${output}/project/sdkconfig.defaults"
+		mkdir -p -- "${output}/project/components/tab5_c6_power"
+		cp -- "${script_dir}/ota-host/tab5/CMakeLists.txt" \
+			"${script_dir}/ota-host/tab5/tab5_c6_power_ctor.c" \
+			"${script_dir}/../boot-shim/main/tab5_power.c" \
+			"${script_dir}/../boot-shim/main/tab5_power.h" \
+			"${output}/project/components/tab5_c6_power/"
+		;;
+	*) echo "unsupported EASYSTICK_BOARD: ${EASYSTICK_BOARD}" >&2; exit 2 ;;
+esac
 cp -- "${script_dir}/ota-host/partitions.csv" "${output}/project/partitions.csv"
 mkdir -p -- "${output}/project/components/ota_partition/slave_fw_bin"
 cp -- "$c6_image" "${output}/project/components/ota_partition/slave_fw_bin/network_adapter.bin"

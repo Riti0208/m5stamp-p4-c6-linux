@@ -10,6 +10,16 @@ if(DEFINED ENV{ES_GIT_REV} AND NOT "$ENV{ES_GIT_REV}" STREQUAL "")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE EASYSTICK_GIT_REV="$ENV{ES_GIT_REV}")
 endif()
 
+# Board (#tab5): stamp-p4 (default) or tab5.  The Tab5 powers its C6 through
+# an I2C IO expander and wires it to different Slot 1 pins.
+if("$ENV{EASYSTICK_BOARD}" STREQUAL "tab5")
+    target_sources(${COMPONENT_LIB} PRIVATE "tab5_power.c")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE EASYSTICK_BOARD_TAB5=1)
+elseif(NOT "$ENV{EASYSTICK_BOARD}" STREQUAL "" AND
+       NOT "$ENV{EASYSTICK_BOARD}" STREQUAL "stamp-p4")
+    message(FATAL_ERROR "unsupported EASYSTICK_BOARD: $ENV{EASYSTICK_BOARD}")
+endif()
+
 # Keep M1's proven boot path free of SDIO side effects.  The M2 and C68
 # network builds opt in explicitly when they build this project.
 if("$ENV{EASYSTICK_BOOT_PROFILE}" STREQUAL "m2" OR

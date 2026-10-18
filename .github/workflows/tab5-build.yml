@@ -1,0 +1,97 @@
+# M5Stack Tab5 build (manual).  Builds, without publishing anything:
+#  - the Linux image for the Tab5 (EASYSTICK_BOARD=tab5, m3-lab profile),
+#  - the ESP-Hosted-NG C6 firmware the Linux driver expects, and
+#  - the temporary P4 OTA host that writes that firmware to the Tab5's C6.
+# The release workflow (release.yml) stays Stamp-P4 only.
+name: tab5-build
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version for the image names, vMAJOR.MINOR.PATCH (a -suffix is dropped)'
+        required: true
+        default: 'v0.0.1-tab5'
+      esp_hosted_mcu_ref:
+        description: 'esp-hosted-mcu tag for the OTA host (needs the Tab5 board option)'
+        required: true
+        default: 'v2.13.0'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      EASYSTICK_BOARD: tab5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          df -h /
+      - name: Build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bison flex bc cpio rsync unzip file cmake ninja-build device-tree-compiler \
+            libssl-dev libncurses-dev libelf-dev libgmp-dev libmpc-dev squashfs-tools \
+            dosfstools mtools python3-venv python3-pip
+      - name: Verify pinned sources
+        run: python3 tools/verify-source-lock.py
+      - name: Install ESP-IDF toolchain
+        run: |
+          export IDF_TOOLS_PATH=$RUNNER_TEMP/idf-tools
+          (cd vendor/esp-idf && ./install.sh esp32p4,esp32c6)
+      - name: Build Linux image (boot-shim, kernel, rootfs)
+        run: |
+          export IDF_TOOLS_PATH=$RUNNER_TEMP/idf-tools IDF_PATH=$PWD/vendor/esp-idf
+          . "$IDF_PATH/export.sh"
+          bash linux/build-c68.sh --vendor "$RUNNER_TEMP/out" --profile m3-lab
+      - name: Package Linux image
+        run: |
+          VERSION=${{ github.event.inputs.version }}
+          VERSION=${VERSION%%-*}
+          python3 linux/tools/package-release.py \
+            --build-output "$RUNNER_TEMP/out" \
+            --boot-image "$RUNNER_TEMP/out/buildroot/images/boot.img" \
+            --output tab5 --version "$VERSION"
+          cat tab5/SHA256SUMS.txt
+      - name: Build C6 ESP-Hosted-NG firmware
+        run: |
+          export IDF_TOOLS_PATH=$RUNNER_TEMP/idf-tools IDF_PATH=$PWD/vendor/esp-idf
+          . "$IDF_PATH/export.sh"
+          bash linux/m2/build-c6.sh --vendor "$RUNNER_TEMP/c6"
+          mkdir -p tab5/c6
+          cp "$RUNNER_TEMP/c6/build/network_adapter.bin" tab5/c6/
+          cp "$RUNNER_TEMP/c6/C6_PATCH_MANIFEST.txt" tab5/c6/ 2>/dev/null || true
+      - name: Build C6 OTA host for the Tab5
+        run: |
+          export IDF_TOOLS_PATH=$RUNNER_TEMP/idf-tools IDF_PATH=$PWD/vendor/esp-idf
+          . "$IDF_PATH/export.sh"
+          src="$RUNNER_TEMP/ota-src"
+          mkdir -p "$src"
+          ln -s "$IDF_PATH" "$src/esp_idf"
+          git clone --depth 1 --branch "${{ github.event.inputs.esp_hosted_mcu_ref }}" \
+            --recurse-submodules --shallow-submodules \
+            https://github.com/espressif/esp-hosted-mcu.git "$src/esp_hosted_mcu"
+          bash linux/m2/build-ota-host.sh "$src" tab5/c6/network_adapter.bin "$RUNNER_TEMP/ota"
+          mkdir -p tab5/ota-host
+          b="$RUNNER_TEMP/ota/build"
+          cp "$b/bootloader/bootloader.bin" "$b/partition_table/partition-table.bin" \
+            "$b/ota_data_initial.bin" "$b/host_performs_slave_ota.bin" tab5/ota-host/
+          cp tab5/c6/network_adapter.bin tab5/ota-host/
+          # Same layout as linux/m2/ota-host/flash-ota-host.ps1; the C6 image
+          # goes into the slave_fw partition the host sends over SDIO.
+          printf '%s\n' '--flash_mode dio --flash_freq 80m --flash_size 16MB' \
+            '0x2000 bootloader.bin' '0x8000 partition-table.bin' \
+            '0xd000 ota_data_initial.bin' '0x10000 host_performs_slave_ota.bin' \
+            '0x5f0000 network_adapter.bin' > tab5/ota-host/flash_args
+          (cd tab5 && sha256sum c6/network_adapter.bin ota-host/*.bin > SHA256SUMS-c6.txt && cat SHA256SUMS-c6.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tab5-assets
+          path: tab5/
+          if-no-files-found: error

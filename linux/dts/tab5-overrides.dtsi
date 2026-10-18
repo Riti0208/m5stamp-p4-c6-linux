@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * M5Stack Tab5 overrides, appended to easystick-stamp-p4.dts by build-m1.sh
+ * when EASYSTICK_BOARD=tab5.  The SoC side (P4 NRW32, 32 MiB PSRAM, 16 MiB
+ * flash, USB-Serial/JTAG console on GPIO24/25) is the same as the Stamp-P4;
+ * the boot shim powers the C6 and routes Slot 1 to the Tab5's SDIO pins
+ * (CLK 12, CMD 13, DAT0..3 11/10/9/8), so the sdmmc1 node stays as is.
+ */
+
+/ {
+	model = "M5Stack Tab5";
+	compatible = "m5stack,tab5", "espressif,esp32p4";
+};
+
+/*
+ * GPIO26/27 carry I2S to the audio codec on the Tab5, not a USB connector,
+ * and the boot shim leaves the FS OTG PHY off.  Without a UDC the userland
+ * skips the USB mass-storage drive.
+ */
+&usb_otg11 {
+	status = "disabled";
+};

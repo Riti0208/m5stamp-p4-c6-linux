@@ -347,8 +347,15 @@ EOF
 	# this point (easystick-bootsync, SEEN_REF).
 	touch -r /tmp/boot.img /run/.bootsync-seen 2>/dev/null || true
 
-	# Start USB Mass Storage Gadget on Full-Speed DWC2 (Type-A port)
-	if [ -f /tmp/boot.img ]; then
+	# Start USB Mass Storage Gadget on Full-Speed DWC2 (Type-A port).  The
+	# DWC2 driver is built in, so its UDC exists by now; a board without one
+	# (the Tab5) has no USB drive and its DWC2 registers are not clocked.
+	HAVE_UDC=0
+	for udc in /sys/class/udc/*; do
+		[ -e "$udc" ] && HAVE_UDC=1
+	done
+	[ "$HAVE_UDC" = 1 ] || es_log "ES_USB_GADGET SKIP: no USB device controller"
+	if [ -f /tmp/boot.img ] && [ "$HAVE_UDC" = 1 ]; then
 		es_log "ES_USB_GADGET STARTING"
 		USB_SERIAL=$(tr -d : 2>/dev/null < /sys/class/net/wlan0/address || true)
 		if [ -z "$USB_SERIAL" ]; then
@@ -379,7 +386,7 @@ EOF
 	fi
 
 	# Dump DWC2 status registers to syslog/dmesg for boot verification
-	if command -v devmem >/dev/null 2>&1; then
+	if [ "$HAVE_UDC" = 1 ] && command -v devmem >/dev/null 2>&1; then
 		d_cfg=$(devmem 0x50040800 32 2>/dev/null || true)
 		d_sts=$(devmem 0x50040808 32 2>/dev/null || true)
 		d_ctl=$(devmem 0x50040804 32 2>/dev/null || true)

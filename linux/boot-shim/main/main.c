@@ -69,6 +69,8 @@
 #include "driver/gpio.h"
 #include "boot_ab.h"
 
+#ifndef EASYSTICK_BOARD_TAB5
+/* The Tab5 uses GPIO26/27 for I2S; it has no USB gadget port there. */
 static void easystick_usb_otg_init(void)
 {
 	ESP_LOGI("easystick-otg", "enabling USB OTG 1.1 (FS GPIO26/27) clock and PHY...");
@@ -92,6 +94,7 @@ static void easystick_usb_otg_init(void)
 	USB_WRAP.otg_conf.dp_pullup = 0;
 	gpio_pullup_dis(GPIO_NUM_27);
 }
+#endif
 
 static const char *TAG = "easystick-boot";
 
@@ -727,8 +730,10 @@ void app_main(void)
 	/* M2 opts in to the raw Slot 1 bootstrap; M1 keeps the proven path. */
 	easystick_m2_sdmmc_init();
 	#endif
+#ifndef EASYSTICK_BOARD_TAB5
 	/* Enable Full-Speed USB OTG (DWC2) for Type-A USB Gadget */
 	easystick_usb_otg_init();
+#endif
 	const esp_partition_t *kernel = esp_partition_find_first(
 		ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "kernel");
 	const esp_partition_t *dtb_part = esp_partition_find_first(

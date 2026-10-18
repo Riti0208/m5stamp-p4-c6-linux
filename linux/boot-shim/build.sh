@@ -10,6 +10,9 @@ available in that environment. The script only builds the ESP-IDF shim; it
 never invokes esptool or writes a target. Use a separate output directory so
 the M1 recovery image cannot be overwritten by an M2 experiment.
 
+Set EASYSTICK_BOARD=tab5 to build for the M5Stack Tab5 instead of the
+Stamp-P4 (default EASYSTICK_BOARD=stamp-p4).
+
 Set EASYSTICK_TSENS_ORACLE=1 for an explicit C68-only ESP32-P4 LP-TSENS
 reference build. It emits one P4_TSENS_REF PASS line, then disables the
 sensor and its internal REGI2C path before handing off to Linux.
@@ -48,6 +51,9 @@ command -v idf.py >/dev/null || {
 }
 
 export IDF_TARGET=esp32p4
+EASYSTICK_BOARD=${EASYSTICK_BOARD:-stamp-p4}
+case "$EASYSTICK_BOARD" in stamp-p4|tab5) ;; *) echo "unsupported EASYSTICK_BOARD: $EASYSTICK_BOARD" >&2; exit 2 ;; esac
+export EASYSTICK_BOARD
 ES_GIT_REV=${ES_GIT_REV:-$(git -C "${script_dir}" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)}
 export ES_GIT_REV
 export EASYSTICK_BOOT_PROFILE="$profile"
@@ -82,4 +88,4 @@ for artifact in bootloader/bootloader.bin partition_table/partition-table.bin ea
 		exit 1
 	}
 done
-echo "${profile^^} boot-shim build complete: ${output}/build"
+echo "${profile^^} boot-shim build complete (${EASYSTICK_BOARD}): ${output}/build"

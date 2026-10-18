@@ -33,6 +33,9 @@ keeps the image that the hardware validation records describe.
 Set EASYSTICK_LEGAL_INFO=1 to also run Buildroot's legal-info into
 <vendor>/buildroot/legal-info (sources, patches and license texts, #31).  It
 does not change any image.
+Set EASYSTICK_BOARD=tab5 to build for the M5Stack Tab5: the DTS gets
+linux/dts/tab5-overrides.dtsi appended (the DTB keeps its name).  Build the
+boot shim with the same variable (build-c68.sh passes it through).
 --profile m3-lab reserves 64 KB of PSRAM for ramoops (kernel oops/panic and
 console tail, #26); set EASYSTICK_PSTORE=0 to leave it out.  On hardware the console
 record keeps the panic across both the panic=5 restart and a watchdog reset
@@ -946,6 +949,17 @@ rm -rf -- "$dts_stage"
 mkdir -p -- "${dts_stage}/espressif"
 cp -- "${firmware_root}/linux/dts/easystick-stamp-p4.dts" \
 	"${dts_stage}/espressif/easystick-stamp-p4.dts"
+# Other boards keep the Stamp-P4 DTS (and its DTB name) and append their
+# differences, so the gates below and the flash layout stay single-sourced.
+case "${EASYSTICK_BOARD:-stamp-p4}" in
+	stamp-p4) ;;
+	tab5)
+		cat -- "${firmware_root}/linux/dts/tab5-overrides.dtsi" \
+			>>"${dts_stage}/espressif/easystick-stamp-p4.dts"
+		;;
+	*) echo "unsupported EASYSTICK_BOARD: ${EASYSTICK_BOARD}" >&2; exit 2 ;;
+esac
+printf '%s\n' "board: ${EASYSTICK_BOARD:-stamp-p4}" >>"${patch_stage}/SOURCE.txt"
 if [[ "$wdt_test_timeout_s" != "0" ]]; then
 	python3 - "${dts_stage}/espressif/easystick-stamp-p4.dts" \
 		"$wdt_test_timeout_s" "$wdt_test_no_feed" <<'PY'

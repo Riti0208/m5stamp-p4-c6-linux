@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-only
 /*
- * ESP32-P4 Slot 1 GPIO-matrix/clock bootstrap for Stamp-AddOn C6.
+ * ESP32-P4 Slot 1 GPIO-matrix/clock bootstrap for the C6 (Stamp-AddOn C6,
+ * or the C6 on an M5Stack Tab5 with EASYSTICK_BOARD_TAB5).
  *
  * Linux's board port does not yet have an upstream P4 pinctrl/clock
  * controller, so the boot shim leaves the controller clocked and routes the
@@ -16,6 +17,11 @@
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 
+#ifdef EASYSTICK_BOARD_TAB5
+#include "driver/rtc_io.h"
+#include "tab5_power.h"
+#endif
+
 static const char *TAG = "easystick-m2-sdio";
 
 #define HP_SYS_CLKRST_BASE 0x500e6000u
@@ -26,6 +32,10 @@ static const char *TAG = "easystick-m2-sdio";
 #define LP_SDMMC_RESET (LP_CLKRST_BASE + 0x4cu)
 
 #define GPIO_BASE 0x500e0000u
+#define GPIO_OUT_W1TS (GPIO_BASE + 0x08u)
+#define GPIO_OUT_W1TC (GPIO_BASE + 0x0cu)
+#define GPIO_ENABLE_W1TS (GPIO_BASE + 0x24u)
+#define GPIO_ENABLE_W1TC (GPIO_BASE + 0x28u)
 #define GPIO_OUT1_W1TS (GPIO_BASE + 0x14u)
 #define GPIO_OUT1_W1TC (GPIO_BASE + 0x18u)
 #define GPIO_ENABLE1_W1TS (GPIO_BASE + 0x30u)
@@ -64,6 +74,21 @@ static const char *TAG = "easystick-m2-sdio";
 #define IOMUX_MCU_SEL_MASK (7u << 12)
 #define PIN_FUNC_GPIO 1u
 
+/*
+ * C6 wiring.  Stamp-AddOn C6: CLK=43, CMD=44, DAT0..3=45..48, EN=42.
+ * Tab5 (schematic SDIO2_*, SOC_EXTRF_RST): CLK=12, CMD=13, DAT0=11,
+ * DAT1=10, DAT2=9, DAT3=8, EN=15.
+ */
+struct c6_sdio_pins {
+	uint32_t clk, cmd, d0, d1, d2, d3, en;
+};
+
+#ifdef EASYSTICK_BOARD_TAB5
+static const struct c6_sdio_pins c6_pins = { 12u, 13u, 11u, 10u, 9u, 8u, 15u };
+#else
+static const struct c6_sdio_pins c6_pins = { 43u, 44u, 45u, 46u, 47u, 48u, 42u };
+#endif
+
 static inline volatile uint32_t *reg32(uint32_t addr)
 {
 	return (volatile uint32_t *)(uintptr_t)addr;
@@ -83,24 +108,19 @@ static inline void clear_set_bits(uint32_t addr, uint32_t clear, uint32_t set)
 static void configure_iomux_gpio(uint32_t gpio, bool pullup)
 {
 	/*
-	 * ESP32-P4's IO_MUX register map is not gpio_number * 4 throughout:
-	 * GPIO26 starts at offset 0x6c, so the Stamp SDIO pins 42..48 occupy
-	 * offsets 0xac..0xc4.  Using gpio * 4 here configured the preceding
-	 * pad (GPIO43 wrote GPIO42's register), leaving the data path unreliable.
-	 * Keep the small board-specific mapping explicit until this bootstrap can
-	 * use the ESP-IDF GPIO helpers directly.
+	 * ESP32-P4's IO_MUX register map is not gpio_number * 4: the pad
+	 * registers start at offset 4 (GPIO0 0x04, GPIO8 0x24, GPIO26 0x6c,
+	 * GPIO42 0xac).  Using gpio * 4 here configured the preceding pad
+	 * (GPIO43 wrote GPIO42's register), leaving the data path unreliable.
 	 */
-	uint32_t offset;
-	switch (gpio) {
-	case 42u: offset = 0xacu; break;
-	case 43u: offset = 0xb0u; break;
-	case 44u: offset = 0xb4u; break;
-	case 45u: offset = 0xb8u; break;
-	case 46u: offset = 0xbcu; break;
-	case 47u: offset = 0xc0u; break;
-	case 48u: offset = 0xc4u; break;
-	default: return;
-	}
+	if (gpio > 54u)
+		return;
+	uint32_t offset = (gpio + 1u) * 4u;
+#ifdef EASYSTICK_BOARD_TAB5
+	/* GPIO0..15 are LP-capable pads; make sure the HP IO_MUX owns them. */
+	if (rtc_gpio_is_valid_gpio((gpio_num_t)gpio))
+		rtc_gpio_deinit((gpio_num_t)gpio);
+#endif
 	uint32_t clear = IOMUX_FUN_PD | IOMUX_FUN_PU | IOMUX_FUN_IE |
 			 IOMUX_FUN_DRV_MASK | IOMUX_MCU_SEL_MASK;
 	uint32_t set = IOMUX_FUN_IE | (3u << 10) | (PIN_FUNC_GPIO << 12);
@@ -122,20 +142,51 @@ static void route_input(uint32_t signal, uint32_t gpio)
 	*reg32(GPIO_FUNC_IN_SEL_BASE + (signal * 4u)) = (gpio & 0x3fu) | (1u << 7);
 }
 
+#ifdef EASYSTICK_BOARD_TAB5
+/*
+ * The Tab5 schematic wires GPIO15 through 1 k straight to the C6 EN (10 k
+ * pull-up, 1 uF), i.e. low = reset.  ESP-Hosted-MCU's Tab5 board option
+ * says the reset is active-low the other way round (high = reset) and was
+ * tested on hardware, so a board revision may invert it.  Both agree that a
+ * released line lets the C6 run (the EN pull-up), so pulse low, then high,
+ * then release: whichever level is the reset level is applied once for
+ * 10 ms and the C6 starts on release.  The C6 was also just powered on.
+ */
 static void pulse_c6_reset(void)
 {
-	const uint32_t bit = 1u << (42u - 32u);
+	const uint32_t gpio = c6_pins.en;
+	const uint32_t bit = 1u << gpio;
 
-	configure_iomux_gpio(42u, false);
-	*reg32(GPIO_ENABLE1_W1TS) = bit;
-	*reg32(GPIO_OUT1_W1TS) = bit;
+	configure_iomux_gpio(gpio, false);
+	*reg32(GPIO_OUT_W1TC) = bit;
+	*reg32(GPIO_ENABLE_W1TS) = bit;
 	esp_rom_delay_us(C6_RESET_ASSERT_US);
-	*reg32(GPIO_OUT1_W1TC) = bit;
-	esp_rom_delay_us(C6_RESET_INACTIVE_US);
-	*reg32(GPIO_OUT1_W1TS) = bit;
+	*reg32(GPIO_OUT_W1TS) = bit;
+	esp_rom_delay_us(C6_RESET_ASSERT_US);
+	*reg32(GPIO_ENABLE_W1TC) = bit;
 	esp_rom_delay_us(C6_RESET_READY_DELAY_US);
-	ESP_LOGI(TAG, "C6 reset GPIO42 released");
+	ESP_LOGI(TAG, "C6 reset GPIO%u pulsed both ways and released", (unsigned)gpio);
 }
+#else
+static void pulse_c6_reset(void)
+{
+	const uint32_t gpio = c6_pins.en;
+	const uint32_t bit = 1u << (gpio & 31u);
+	const uint32_t out_set = gpio < 32u ? GPIO_OUT_W1TS : GPIO_OUT1_W1TS;
+	const uint32_t out_clr = gpio < 32u ? GPIO_OUT_W1TC : GPIO_OUT1_W1TC;
+	const uint32_t en_set = gpio < 32u ? GPIO_ENABLE_W1TS : GPIO_ENABLE1_W1TS;
+
+	configure_iomux_gpio(gpio, false);
+	*reg32(en_set) = bit;
+	*reg32(out_set) = bit;
+	esp_rom_delay_us(C6_RESET_ASSERT_US);
+	*reg32(out_clr) = bit;
+	esp_rom_delay_us(C6_RESET_INACTIVE_US);
+	*reg32(out_set) = bit;
+	esp_rom_delay_us(C6_RESET_READY_DELAY_US);
+	ESP_LOGI(TAG, "C6 reset GPIO%u released", (unsigned)gpio);
+}
+#endif
 
 static void enable_sdmmc_clock(void)
 {
@@ -165,34 +216,38 @@ static void enable_sdmmc_clock(void)
 
 void easystick_m2_sdmmc_init(void)
 {
+#ifdef EASYSTICK_BOARD_TAB5
+	/* The Tab5 C6 has its own load switch; nothing answers SDIO until it is on. */
+	tab5_c6_power_on();
+#endif
 	enable_sdmmc_clock();
 
-	/* Slot 1: CLK=43, CMD=44, DAT0..3=45..48. */
-	const uint32_t pins[] = { 43u, 44u, 45u, 46u, 47u, 48u };
+	const uint32_t pins[] = { c6_pins.clk, c6_pins.cmd, c6_pins.d0,
+				  c6_pins.d1, c6_pins.d2, c6_pins.d3 };
 	for (uint32_t i = 0; i < 6u; ++i)
 		configure_iomux_gpio(pins[i], i != 0u);
 
-	route_output(43u, 0u); /* SD_CARD_CCLK_2_PAD_OUT_IDX */
-	route_output(44u, 1u); /* SD_CARD_CCMD_2_PAD_OUT_IDX */
-	route_output(45u, 2u);
-	route_output(46u, 3u);
-	route_output(47u, 4u);
-	route_output(48u, 5u);
-	route_input(1u, 44u); /* CMD */
-	route_input(2u, 45u); /* DAT0 */
-	route_input(3u, 46u); /* DAT1 / SDIO interrupt */
-	route_input(4u, 47u); /* DAT2 */
-	route_input(5u, 48u); /* DAT3 */
+	route_output(c6_pins.clk, 0u); /* SD_CARD_CCLK_2_PAD_OUT_IDX */
+	route_output(c6_pins.cmd, 1u); /* SD_CARD_CCMD_2_PAD_OUT_IDX */
+	route_output(c6_pins.d0, 2u);
+	route_output(c6_pins.d1, 3u);
+	route_output(c6_pins.d2, 4u);
+	route_output(c6_pins.d3, 5u);
+	route_input(1u, c6_pins.cmd); /* CMD */
+	route_input(2u, c6_pins.d0); /* DAT0 */
+	route_input(3u, c6_pins.d1); /* DAT1 / SDIO interrupt */
+	route_input(4u, c6_pins.d2); /* DAT2 */
+	route_input(5u, c6_pins.d3); /* DAT3 */
 	/*
 	 * P4 gates the in-band DAT1 interrupt with a separate per-slot
-	 * card_int matrix input. Slot 1 has no separate pin on Stamp-P4, so
+	 * card_int matrix input. Slot 1 has no separate pin on either board, so
 	 * match ESP-IDF's SDMMC host setup and hold that input high.
 	 */
 	route_input(129u, 0x3fu); /* SD_CARD_INT_N_2_PAD_IN_IDX <- constant one */
 
 	/*
 	 * Reset before Linux enumerates the card. ESP-IDF's working SDIO host does
-	 * this, whereas the Linux ESP-Hosted module cannot drive GPIO42 through its
+	 * this, whereas the Linux ESP-Hosted module cannot drive the EN pin through its
 	 * current legacy gpiolib mapping. This avoids resetting an enumerated card.
 	 * M5Stack's official Stamp-P4 ESP-Hosted configuration waits 1500 ms after
 	 * a 10 ms active-high / 10 ms inactive / active-high sequence; keep the
