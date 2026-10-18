@@ -5,9 +5,24 @@ ESP32-C6 on SDIO, so it runs this image with a different boot shim and a few
 DTS changes. `EASYSTICK_BOARD=tab5` selects them; the `tab5-build` workflow
 builds everything below.
 
-**Status: stage 1 boots on hardware (2026-10-18).** Stage 1 is headless:
-serial console on the USB-C port, Wi-Fi SoftAP and SSH. The display and the
-Tab5 Keyboard come later.
+**Status (2026-10-18): Linux runs on the Tab5 with Wi-Fi/SSH, a console on
+the display and input from the Tab5 Keyboard.** A root shell on tty1 takes
+`uname -a` typed on the keyboard and shows the output on the panel.
+
+- Display: WHY2025's ESP32-P4 DSI glue (0003, 0073) with 0074 (DPI clock
+  from the mode, GDMA scanning the DRM framebuffer directly) and an ST7123
+  panel driver (0075); fbcon rotated to landscape, Terminus 16x32, 80x22.
+  The framebuffer lives in a 2 MB `shared-dma-pool`, and the DSI node is
+  `dma-coherent` (the cache ops make devices non-coherent, and NOMMU has no
+  uncached remap).
+- Keyboard: 0076, HID mode over a bit-banged I2C bus on GPIO0/1. Register
+  reads need STOP between the register write and the read.
+- Backlight: GPIO22 is hogged in the DTS; the P4 GPIO driver otherwise
+  clears its output enable whenever the I2C bus changes SDA's direction.
+- `tools/tab5-kernel-build.sh` rebuilds the kernel from the CI kernel kit
+  for quick driver iterations.
+
+Stage 1 (headless) notes follow.
 
 Checked on one Tab5 (P4 rev v1.3, ST7123 panel/touch) with the `tab5-build`
 image of `1b9718c` (`m5stamp-p4-c6-linux-smp-v0.0.1-16mb.bin`, SHA-256
@@ -111,10 +126,10 @@ ESP-Hosted-MCU image on the C6, see above).
 - `ES_USB_GADGET SKIP: no USB device controller`
 - `ES_CREDENTIALS NEW ...` with the SoftAP SSID and passphrase
 
-## Next stages
+## Open items
 
-1. Display: the boot shim brings up the MIPI-DSI panel with ESP-IDF
-   (ILI9881C, ST7123 or ST7121 depending on the revision) and hands Linux a
-   `simple-framebuffer` for `fbcon`.
-2. Tab5 Keyboard (A164): I2C 0x6D on GPIO0/1 with INT on GPIO50, via
-   `i2c-gpio` and a small input driver, so the console takes keyboard input.
+- Only the ST7123 panel revision is supported; ILI9881C and ST7121 panels
+  need their own init tables.
+- `/boot/config.txt` edits are not saved on the Tab5 (no USB drive).
+- The keyboard reports firmware version 0; its INT line (GPIO50) is unused.
+- The display costs about 4 MB of the kernel's memory (MemFree ~4 MB idle).
