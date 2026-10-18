@@ -1,4 +1,89 @@
-# M5Stamp ESP32-P4 + C6 SDIO Linux (SMP kernel, experimental dual-core)
+# Tab5 Linux
+
+[日本語](README.ja.md)
+
+Native RISC-V NOMMU Linux 6.18 on the **M5Stack Tab5** (ESP32-P4 + ESP32-C6):
+a console on the 5" display, typed on the **Tab5 Keyboard**, with Wi-Fi,
+SSH, BusyBox and MicroPython.  No emulator: the kernel runs on the P4's
+RISC-V core.
+
+This is a fork of
+[tsuyoshi-otake/m5stamp-p4-c6-linux](https://github.com/tsuyoshi-otake/m5stamp-p4-c6-linux),
+which runs the same Linux on the M5Stamp-P4.  The Tab5 support is selected
+with `EASYSTICK_BOARD=tab5`; the Stamp-P4 build is unchanged and its
+documentation follows below.  Details of the port are in
+[docs/tab5.md](docs/tab5.md).
+
+## What works
+
+| | |
+| --- | --- |
+| Display | 720x1280 ST7123 panel over MIPI-DSI, Linux console (fbcon) in landscape, 80x22 with Terminus 16x32 |
+| Keyboard | Tab5 Keyboard (A164) over I2C, as a Linux input device; Sym/Aa layers, Ctrl, Alt |
+| Wi-Fi | ESP32-C6 over SDIO (ESP-Hosted NG): SoftAP by default, or station mode from `/boot/config.txt` |
+| Shell | root shell on the display (tty1) and on the USB-C serial console; Dropbear SSH as user `m5` |
+| Userland | BusyBox (vi, awk, wget, ...), MicroPython (`python3`), NTP clock |
+
+Not yet: the ILI9881C and ST7121 panel revisions (only ST7123 is
+supported), touch, audio, camera, the USB-A host port, battery and power
+button handling, and the second CPU core.
+
+## Installing on a Tab5
+
+This replaces the Tab5's firmware.  Read [docs/tab5.md](docs/tab5.md)
+before flashing; it has the commands.
+
+1. **Back up the factory flash** (16 MB, `esptool.py read_flash`), so the
+   original firmware can be restored.
+2. **Update the C6 once.** The Linux driver needs ESP-Hosted NG on the C6,
+   and the Tab5 ships with ESP-Hosted-MCU.  The C6 has no USB port; a
+   temporary P4 program sends the new firmware over SDIO.  After this the
+   factory firmware has no Wi-Fi until the C6 gets ESP-Hosted-MCU again.
+3. **Flash the Linux image** (16 MB, at `0x0`) over the USB-C port.
+
+Images come from the `tab5-build` GitHub Actions workflow
+(`tab5-assets`: the Linux image, the C6 firmware and the C6 OTA host).
+There is no release yet.
+
+## Using it
+
+- The display shows a root shell; press Enter to start it.  `=` and `:`
+  are on the Sym layer of the keyboard.
+- Wi-Fi and SSH credentials are generated on the first boot:
+  `cat /boot/credentials.txt`.  The board starts as a SoftAP (`m5-XXXX`,
+  192.168.4.1); `ssh m5@192.168.4.1`.
+- To join your network, edit `/boot/config.txt` with `vi` and set
+  `wifi_ssid=`, `wifi_psk=` and `country=` (remove the leading `#`).  The
+  change is saved to flash and applied about 3 s after you save; the C6 is
+  2.4 GHz only.
+
+## Building
+
+The `tab5-build` workflow builds everything on a GitHub runner (about an
+hour).  Locally, with the ESP-IDF and Buildroot prerequisites of the
+upstream build below:
+
+```bash
+EASYSTICK_BOARD=tab5 bash linux/build-c68.sh --vendor <out> --profile m3-lab
+```
+
+For kernel driver work, `tools/tab5-kernel-build.sh` rebuilds only the
+kernel from the workflow's `tab5-kernel-kit` artifact in a few minutes, and
+a DTS change needs only the DTB partition (`0xf10000`).
+
+## Credits
+
+- [tsuyoshi-otake/m5stamp-p4-c6-linux](https://github.com/tsuyoshi-otake/m5stamp-p4-c6-linux):
+  the Linux distribution this fork builds on.
+- [mrbreaker/why2025-linux](https://github.com/mrbreaker/why2025-linux):
+  the ESP32-P4 NOMMU kernel port and the MIPI-DSI DRM driver the display uses.
+- [Apache NuttX](https://github.com/apache/nuttx) `esp32p4-tab5` and M5Stack's
+  ESP-BSP: the ST7123 init table and timings.
+- M5Stack: the Tab5 schematic and the Tab5 Keyboard I2C protocol.
+
+---
+
+# Upstream: M5Stamp ESP32-P4 + C6 SDIO Linux (SMP kernel, experimental dual-core)
 
 [![License](https://img.shields.io/badge/license-GPL--2.0--only-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-ESP32--P4%20%2B%20ESP32--C6-orange.svg)](https://m5stack.com)

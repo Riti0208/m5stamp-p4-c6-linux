@@ -8,7 +8,7 @@ name: tab5-build
 # works once this file is on the default branch.
 on:
   push:
-    branches: [tab5]
+    branches: [main, tab5]
     paths-ignore: ['**.md', 'docs/**']
   workflow_dispatch:
     inputs:
